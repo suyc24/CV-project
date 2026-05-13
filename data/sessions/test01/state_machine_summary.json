@@ -1,0 +1,20 @@
+{
+  "frames": 648,
+  "online_hits": 115,
+  "replay_hits": 134,
+  "reason_counts": {
+    "velocity": 1953,
+    "press_line": 2046,
+    "no_zone": 188,
+    "hit": 134,
+    "pressed": 977,
+    "cooldown": 22,
+    "crossing_velocity": 20
+  },
+  "config": {
+    "PIANO_HIT_VELOCITY_THRESHOLD": 180.0,
+    "HIT_VELOCITY_THRESHOLD": 850.0,
+    "PIANO_PRESS_RATIO": 0.6,
+    "PIANO_RELEASE_RATIO": 0.35
+  }
+}
