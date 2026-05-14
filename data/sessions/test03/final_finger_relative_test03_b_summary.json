@@ -1,0 +1,40 @@
+{
+  "frames": 132,
+  "online_hits": 8,
+  "replay_hits": 6,
+  "reason_counts": {
+    "not_armed": 8,
+    "short_drop": 567,
+    "strike_velocity": 31,
+    "velocity": 114,
+    "armed": 43,
+    "hit": 6,
+    "pressed": 154,
+    "lifted": 6,
+    "suppressed_by_finger": 3
+  },
+  "config": {
+    "PIANO_HIT_VELOCITY_THRESHOLD": 150.0,
+    "PIANO_CROSSING_VELOCITY_THRESHOLD": 55.0,
+    "HIT_VELOCITY_THRESHOLD": 850.0,
+    "PIANO_PRESS_RATIO": 0.35,
+    "PIANO_RELEASE_RATIO": 0.3,
+    "PIANO_ARM_RATIO": 0.28,
+    "PIANO_LIFT_VELOCITY_THRESHOLD": 45.0,
+    "PIANO_FALLING_VELOCITY_THRESHOLD": 45.0,
+    "PIANO_STRIKE_MIN_DROP_PX": 18.0,
+    "PIANO_STRIKE_MIN_VELOCITY": 110.0,
+    "PIANO_RELEASE_LIFT_PX": 14.0,
+    "PIANO_USE_RELATIVE_FINGER_MOTION": true,
+    "PIANO_MAX_HITS_PER_HAND_PER_FRAME": 1,
+    "TRIGGER_FINGER_IDS": [
+      8,
+      12,
+      16,
+      20
+    ],
+    "PIANO_HIT_X_MARGIN_RATIO": 0.06,
+    "PIANO_HIT_TOP_MARGIN_RATIO": 0.28,
+    "PIANO_HIT_BOTTOM_MARGIN_RATIO": 0.18
+  }
+}

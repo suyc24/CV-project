@@ -21,6 +21,8 @@ GREEN = (80, 210, 80)
 BLUE = (230, 140, 60)
 YELLOW = (80, 220, 245)
 
+_PIANO_PLANE_CACHE: Dict[Tuple[Tuple[int, int, int], Tuple[Tuple[int, int], ...], int], Dict[str, object]] = {}
+
 
 def draw_scene(
     frame,
@@ -85,6 +87,10 @@ def draw_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_t
 
 
 def draw_piano_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_time: float) -> None:
+    if zones and zones[0].polygon:
+        draw_perspective_piano_zones(frame, zones, highlights, current_time)
+        return
+
     roi_x1 = min(zone.x1 for zone in zones)
     roi_y1 = min(zone.y1 for zone in zones)
     roi_x2 = max(zone.x2 for zone in zones)
@@ -117,6 +123,120 @@ def draw_piano_zones(frame, zones: List[Zone], highlights: Dict[str, float], cur
         _put_centered(frame, zone.label, label_center, BLACK, scale=0.52, thickness=2)
 
     _draw_black_keys(frame, zones)
+
+
+def draw_perspective_piano_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_time: float) -> None:
+    quad = _piano_plane_quad(zones)
+    if quad is None:
+        return
+
+    assets = _get_perspective_piano_assets(frame.shape, quad, len(zones))
+    _blend_with_mask(frame, assets["shadow_overlay"], assets["shadow_mask"], config.PIANO_PLANE_SHADOW_ALPHA)
+    _blend_with_mask(frame, assets["warped"], assets["mask"], config.PIANO_KEYBED_OPACITY)
+
+    cv2.polylines(frame, [np.array(quad, dtype=np.int32)], True, (18, 18, 18), 3)
+    for zone in zones:
+        polygon = zone.polygon
+        if not polygon:
+            continue
+        poly = np.array(polygon, dtype=np.int32)
+        active = highlights.get(zone.sound_id, 0.0) > current_time
+        if active:
+            overlay = np.zeros_like(frame)
+            overlay[:] = (60, 215, 255)
+            active_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+            cv2.fillConvexPoly(active_mask, poly, 255)
+            _blend_with_mask(frame, overlay, active_mask, 0.38)
+
+        cv2.polylines(frame, [poly], True, (35, 35, 35), 1)
+        press_left, press_right = _zone_depth_points(zone, zone.press_ratio)
+        cv2.line(frame, press_left, press_right, (40, 185, 255), 1)
+        label_left, label_right = _zone_depth_points(zone, 0.78)
+        label_center = ((label_left[0] + label_right[0]) // 2, (label_left[1] + label_right[1]) // 2)
+        _put_centered(frame, zone.label, label_center, BLACK, scale=0.48, thickness=2)
+
+
+def _get_perspective_piano_assets(
+    frame_shape: Tuple[int, int, int],
+    quad: Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]],
+    key_count: int,
+) -> Dict[str, object]:
+    key = (frame_shape, tuple(quad), key_count)
+    cached = _PIANO_PLANE_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    top_left, top_right, bottom_right, bottom_left = quad
+    plane_w = max(64, int(np.linalg.norm(np.array(bottom_right) - np.array(bottom_left))))
+    left_depth = np.linalg.norm(np.array(bottom_left) - np.array(top_left))
+    right_depth = np.linalg.norm(np.array(bottom_right) - np.array(top_right))
+    plane_h = max(64, int(max(left_depth, right_depth)))
+
+    keybed = _generate_piano_keybed(plane_w, plane_h, key_count)
+    mask = np.full((plane_h, plane_w), 255, dtype=np.uint8)
+    src = np.float32([[0, 0], [plane_w - 1, 0], [plane_w - 1, plane_h - 1], [0, plane_h - 1]])
+    dst = np.float32([top_left, top_right, bottom_right, bottom_left])
+    matrix = cv2.getPerspectiveTransform(src, dst)
+    output_size = (frame_shape[1], frame_shape[0])
+    warped = cv2.warpPerspective(keybed, matrix, output_size, flags=cv2.INTER_LINEAR)
+    warped_mask = cv2.warpPerspective(mask, matrix, output_size, flags=cv2.INTER_LINEAR)
+
+    shadow_quad = np.array([(x, y + 8) for x, y in quad], dtype=np.int32)
+    shadow_mask = np.zeros(frame_shape[:2], dtype=np.uint8)
+    cv2.fillConvexPoly(shadow_mask, shadow_quad, 255)
+
+    if len(_PIANO_PLANE_CACHE) > 4:
+        _PIANO_PLANE_CACHE.clear()
+    assets = {
+        "warped": warped,
+        "mask": warped_mask,
+        "shadow_mask": shadow_mask,
+        "shadow_overlay": np.zeros(frame_shape, dtype=np.uint8),
+    }
+    _PIANO_PLANE_CACHE[key] = assets
+    return assets
+
+
+def _piano_plane_quad(zones: List[Zone]) -> Optional[Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]]]:
+    if not zones or not zones[0].polygon or not zones[-1].polygon:
+        return None
+    return (
+        zones[0].polygon[0],
+        zones[-1].polygon[1],
+        zones[-1].polygon[2],
+        zones[0].polygon[3],
+    )
+
+
+def _zone_depth_points(zone: Zone, ratio: float) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    if not zone.polygon:
+        y = int(zone.y1 + zone.height * ratio)
+        return (zone.x1, y), (zone.x2, y)
+    top_left, top_right, bottom_right, bottom_left = zone.polygon
+    left = _lerp_point(top_left, bottom_left, ratio)
+    right = _lerp_point(top_right, bottom_right, ratio)
+    return left, right
+
+
+def _lerp_point(a: Tuple[int, int], b: Tuple[int, int], ratio: float) -> Tuple[int, int]:
+    return (
+        int(round(a[0] + (b[0] - a[0]) * ratio)),
+        int(round(a[1] + (b[1] - a[1]) * ratio)),
+    )
+
+
+def _blend_with_mask(frame, overlay, mask, opacity: float) -> None:
+    points = cv2.findNonZero(mask)
+    if points is None:
+        return
+    x, y, w, h = cv2.boundingRect(points)
+    frame_roi = frame[y : y + h, x : x + w]
+    overlay_roi = overlay[y : y + h, x : x + w]
+    mask_roi = mask[y : y + h, x : x + w]
+    alpha = (mask_roi.astype(np.float32) / 255.0) * opacity
+    alpha_3 = alpha[:, :, None]
+    blended = overlay_roi.astype(np.float32) * alpha_3 + frame_roi.astype(np.float32) * (1.0 - alpha_3)
+    frame_roi[:] = np.clip(blended, 0, 255).astype(np.uint8)
 
 
 def _draw_black_keys(frame, zones: List[Zone]) -> None:
@@ -207,15 +327,24 @@ def draw_hand_cutouts(frame, camera_layer, hands: Iterable[HandLandmarks]) -> No
         for point in points:
             cv2.circle(mask, point, config.HAND_CUTOUT_HULL_PADDING, 255, -1)
 
-    if not np.any(mask):
+    points = cv2.findNonZero(mask)
+    if points is None:
         return
 
     mask = cv2.dilate(mask, np.ones((9, 9), dtype=np.uint8), iterations=1)
-    mask = cv2.GaussianBlur(mask, (31, 31), 0)
-    alpha = (mask.astype(np.float32) / 255.0) * config.HAND_CUTOUT_ALPHA
+    blur_kernel = max(3, int(config.HAND_CUTOUT_BLUR_KERNEL) | 1)
+    mask = cv2.GaussianBlur(mask, (blur_kernel, blur_kernel), 0)
+    points = cv2.findNonZero(mask)
+    if points is None:
+        return
+    x, y, w, h = cv2.boundingRect(points)
+    frame_roi = frame[y : y + h, x : x + w]
+    camera_roi = camera_layer[y : y + h, x : x + w]
+    mask_roi = mask[y : y + h, x : x + w]
+    alpha = (mask_roi.astype(np.float32) / 255.0) * config.HAND_CUTOUT_ALPHA
     alpha_3 = alpha[:, :, None]
-    blended = camera_layer.astype(np.float32) * alpha_3 + frame.astype(np.float32) * (1.0 - alpha_3)
-    frame[:] = np.clip(blended, 0, 255).astype(np.uint8)
+    blended = camera_roi.astype(np.float32) * alpha_3 + frame_roi.astype(np.float32) * (1.0 - alpha_3)
+    frame_roi[:] = np.clip(blended, 0, 255).astype(np.uint8)
 
 
 def draw_fingertip_markers(frame, hands: Iterable[HandLandmarks]) -> None:

@@ -119,6 +119,7 @@ def _zone_to_dict(zone: Zone) -> Dict[str, Any]:
         "y2": zone.y2,
         "press_y": zone.press_y,
         "release_y": zone.release_y,
+        "polygon": zone.polygon,
     }
 
 

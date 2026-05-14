@@ -82,6 +82,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-landmark-smoothing", action="store_true", help="Disable landmark temporal smoothing")
     parser.add_argument("--landmark-smoothing-alpha", type=float, default=config.LANDMARK_SMOOTHING_ALPHA, help="Landmark smoothing alpha")
     parser.add_argument("--max-hands", type=int, default=2, help="Maximum number of hands to track")
+    parser.add_argument("--no-hand-cutout", action="store_true", help="Do not composite the real hand above the piano layer")
+    parser.add_argument("--no-fingertip-markers", action="store_true", help="Hide fingertip marker dots")
+    parser.add_argument("--trigger-thumb", action="store_true", help="Allow thumb tips to trigger notes; enabled by default")
+    parser.add_argument("--no-trigger-thumb", action="store_true", help="Disable thumb note triggers for unstable camera angles")
     parser.add_argument("--min-detection-confidence", type=float, default=0.55, help="MediaPipe hand detection confidence")
     parser.add_argument("--min-tracking-confidence", type=float, default=0.55, help="MediaPipe hand tracking confidence")
     parser.add_argument(
@@ -203,8 +207,12 @@ def main() -> int:
         print(f"Startup error: {exc}", file=sys.stderr)
         return 1
 
+    config.HAND_CUTOUT_ENABLED = config.HAND_CUTOUT_ENABLED and not args.no_hand_cutout
+    config.SHOW_FINGERTIP_MARKERS = config.SHOW_FINGERTIP_MARKERS and not args.no_fingertip_markers
+
     layout = InstrumentLayout(args.mode, roi_ratios=instrument_roi)
-    hit_detector = HitDetector()
+    trigger_fingers = tuple(finger_id for finger_id in config.TRIGGER_FINGER_IDS if finger_id != 4) if args.no_trigger_thumb else config.TRIGGER_FINGER_IDS
+    hit_detector = HitDetector(finger_ids=trigger_fingers)
     loop_station = LoopStation()
     gesture_recognizer = GestureRecognizer()
     gesture_controller = GestureController()
@@ -215,6 +223,7 @@ def main() -> int:
     gesture_update = GestureUpdate(gesture=Gesture.UNKNOWN)
     window_name = "AirDesk Instrument"
     frame_metrics_text = ""
+    last_debug_metrics_time = 0.0
     recorder: Optional[SessionRecorder] = None
     if args.record_session:
         recorder = SessionRecorder(
@@ -241,8 +250,14 @@ def main() -> int:
             current_time = time.perf_counter()
             fps = fps_counter.update()
             metrics = None
-            if args.debug or recorder is not None:
+            should_sample_debug_metrics = (
+                args.debug
+                and current_time - last_debug_metrics_time >= config.DEBUG_METRICS_INTERVAL
+            )
+            if recorder is not None or should_sample_debug_metrics:
                 metrics = measure_frame_quality(frame)
+                if should_sample_debug_metrics:
+                    last_debug_metrics_time = current_time
             if args.debug and metrics is not None:
                 frame_metrics_text = (
                     f"Frame: luma={metrics.mean_luma:.0f} "

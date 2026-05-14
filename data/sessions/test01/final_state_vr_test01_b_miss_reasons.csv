@@ -1,0 +1,12 @@
+reason,count
+not_armed,1370
+pressed,1320
+armed,1288
+no_zone,576
+velocity,299
+hit,185
+short_drop,98
+press_line,81
+falling,76
+cooldown,42
+crossing_velocity,5

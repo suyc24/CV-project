@@ -17,6 +17,7 @@ class Zone:
     kind: str
     press_ratio: float = config.PRESS_RATIO
     release_ratio: float = config.RELEASE_RATIO
+    polygon: Optional[Tuple[Tuple[int, int], ...]] = None
 
     @property
     def width(self) -> int:
@@ -28,6 +29,10 @@ class Zone:
 
     @property
     def center(self) -> Tuple[int, int]:
+        if self.polygon:
+            x = sum(point[0] for point in self.polygon) / len(self.polygon)
+            y = sum(point[1] for point in self.polygon) / len(self.polygon)
+            return (int(x), int(y))
         return (self.x1 + self.width // 2, self.y1 + self.height // 2)
 
     @property
@@ -39,6 +44,8 @@ class Zone:
         return self.y1 + self.release_ratio * self.height
 
     def contains(self, point: Tuple[int, int]) -> bool:
+        if self.polygon:
+            return _point_in_polygon(point, self.polygon)
         x, y = point
         return self.x1 <= x <= self.x2 and self.y1 <= y <= self.y2
 
@@ -128,22 +135,63 @@ class InstrumentLayout:
         piano_height = int((y2 - y1) * config.PIANO_AREA_HEIGHT_RATIO)
         y1 = y2 - max(80, piano_height)
         key_count = len(self.PIANO_LABELS)
-        key_w = (x2 - x1) // key_count
+        width = x2 - x1
+        height = y2 - y1
+        top_inset = int(width * config.PIANO_PLANE_TOP_INSET_RATIO)
+        top_lift = int(height * config.PIANO_PLANE_TOP_LIFT_RATIO)
+        top_y = max(0, y1 - top_lift)
+        top_left = (x1 + top_inset, top_y)
+        top_right = (x2 - top_inset, top_y)
+        bottom_left = (x1, y2)
+        bottom_right = (x2, y2)
         zones: List[Zone] = []
         for idx, label in enumerate(self.PIANO_LABELS):
-            zx1 = x1 + idx * key_w
-            zx2 = x2 if idx == key_count - 1 else zx1 + key_w
+            t0 = idx / key_count
+            t1 = (idx + 1) / key_count
+            poly = (
+                _lerp_point(top_left, top_right, t0),
+                _lerp_point(top_left, top_right, t1),
+                _lerp_point(bottom_left, bottom_right, t1),
+                _lerp_point(bottom_left, bottom_right, t0),
+            )
+            xs = [point[0] for point in poly]
+            ys = [point[1] for point in poly]
             zones.append(
                 Zone(
                     label,
                     label.lower(),
-                    zx1,
-                    y1,
-                    zx2,
-                    y2,
+                    min(xs),
+                    min(ys),
+                    max(xs),
+                    max(ys),
                     "piano",
                     press_ratio=config.PIANO_PRESS_RATIO,
                     release_ratio=config.PIANO_RELEASE_RATIO,
+                    polygon=poly,
                 )
             )
         return zones
+
+
+def _lerp_point(a: Tuple[int, int], b: Tuple[int, int], t: float) -> Tuple[int, int]:
+    return (int(round(a[0] + (b[0] - a[0]) * t)), int(round(a[1] + (b[1] - a[1]) * t)))
+
+
+def _point_in_polygon(point: Tuple[int, int], polygon: Tuple[Tuple[int, int], ...]) -> bool:
+    x, y = point
+    inside = False
+    j = len(polygon) - 1
+    for i, pi in enumerate(polygon):
+        xi, yi = pi
+        xj, yj = polygon[j]
+        crosses = (yi > y) != (yj > y)
+        if crosses:
+            denominator = yj - yi
+            if abs(denominator) < 1e-9:
+                j = i
+                continue
+            x_at_y = (xj - xi) * (y - yi) / denominator + xi
+            if x <= x_at_y:
+                inside = not inside
+        j = i
+    return inside

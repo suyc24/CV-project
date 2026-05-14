@@ -17,6 +17,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Replay an AirDesk recorded session through HitDetector")
     parser.add_argument("session_dir", help="Session directory created by --record-session")
     parser.add_argument("--piano-velocity-threshold", type=float, default=None)
+    parser.add_argument("--piano-strike-velocity", type=float, default=None)
+    parser.add_argument("--piano-strike-drop", type=float, default=None)
+    parser.add_argument("--piano-release-lift", type=float, default=None)
+    parser.add_argument("--piano-arm-ratio", type=float, default=None)
     parser.add_argument("--drum-velocity-threshold", type=float, default=None)
     parser.add_argument("--piano-press-ratio", type=float, default=None)
     parser.add_argument("--piano-release-ratio", type=float, default=None)
@@ -67,6 +71,15 @@ def main() -> int:
             "HIT_VELOCITY_THRESHOLD": config.HIT_VELOCITY_THRESHOLD,
             "PIANO_PRESS_RATIO": config.PIANO_PRESS_RATIO,
             "PIANO_RELEASE_RATIO": config.PIANO_RELEASE_RATIO,
+            "PIANO_ARM_RATIO": config.PIANO_ARM_RATIO,
+            "PIANO_LIFT_VELOCITY_THRESHOLD": config.PIANO_LIFT_VELOCITY_THRESHOLD,
+            "PIANO_FALLING_VELOCITY_THRESHOLD": config.PIANO_FALLING_VELOCITY_THRESHOLD,
+            "PIANO_STRIKE_MIN_DROP_PX": config.PIANO_STRIKE_MIN_DROP_PX,
+            "PIANO_STRIKE_MIN_VELOCITY": config.PIANO_STRIKE_MIN_VELOCITY,
+            "PIANO_RELEASE_LIFT_PX": config.PIANO_RELEASE_LIFT_PX,
+            "PIANO_USE_RELATIVE_FINGER_MOTION": config.PIANO_USE_RELATIVE_FINGER_MOTION,
+            "PIANO_MAX_HITS_PER_HAND_PER_FRAME": config.PIANO_MAX_HITS_PER_HAND_PER_FRAME,
+            "TRIGGER_FINGER_IDS": config.TRIGGER_FINGER_IDS,
             "PIANO_HIT_X_MARGIN_RATIO": config.PIANO_HIT_X_MARGIN_RATIO,
             "PIANO_HIT_TOP_MARGIN_RATIO": config.PIANO_HIT_TOP_MARGIN_RATIO,
             "PIANO_HIT_BOTTOM_MARGIN_RATIO": config.PIANO_HIT_BOTTOM_MARGIN_RATIO,
@@ -83,6 +96,15 @@ def main() -> int:
 def apply_overrides(args: argparse.Namespace) -> None:
     if args.piano_velocity_threshold is not None:
         config.PIANO_HIT_VELOCITY_THRESHOLD = args.piano_velocity_threshold
+        config.PIANO_STRIKE_MIN_VELOCITY = args.piano_velocity_threshold
+    if args.piano_strike_velocity is not None:
+        config.PIANO_STRIKE_MIN_VELOCITY = args.piano_strike_velocity
+    if args.piano_strike_drop is not None:
+        config.PIANO_STRIKE_MIN_DROP_PX = args.piano_strike_drop
+    if args.piano_release_lift is not None:
+        config.PIANO_RELEASE_LIFT_PX = args.piano_release_lift
+    if args.piano_arm_ratio is not None:
+        config.PIANO_ARM_RATIO = args.piano_arm_ratio
     if args.drum_velocity_threshold is not None:
         config.HIT_VELOCITY_THRESHOLD = args.drum_velocity_threshold
     if args.piano_press_ratio is not None:
@@ -120,7 +142,15 @@ def _zone_from_dict(zone: Dict[str, object]) -> Zone:
         kind=kind,
         press_ratio=press_ratio,
         release_ratio=release_ratio,
+        polygon=_polygon_from_dict(zone),
     )
+
+
+def _polygon_from_dict(zone: Dict[str, object]):
+    polygon = zone.get("polygon")
+    if not polygon:
+        return None
+    return tuple((int(point[0]), int(point[1])) for point in polygon)
 
 
 def _hit_to_row(frame_index: int, hit: HitEvent) -> Dict[str, object]:

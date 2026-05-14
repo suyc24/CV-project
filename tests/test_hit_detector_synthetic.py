@@ -19,7 +19,7 @@ def hand_with_finger(hand_id: int, finger_id: int, x: int, y: int):
 def test_all_fingertips_can_trigger():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     zone = zones[0]
-    detector = HitDetector()
+    detector = HitDetector(finger_ids=(4, 8, 12, 16, 20))
     finger_ids = (4, 8, 12, 16, 20)
     x = zone.center[0]
     y_start = zone.y1 + 5
@@ -34,21 +34,64 @@ def test_all_fingertips_can_trigger():
         assert hits[0].finger_id == finger_id
 
 
-def test_press_line_blocks_shallow_motion():
+def test_short_drop_does_not_trigger():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     zone = zones[0]
     detector = HitDetector()
     x = zone.center[0]
     y_start = zone.y1 + 5
-    y_shallow = int(zone.y1 + zone.height * 0.30)
+    y_shallow = y_start + 4
     detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0)
     hits = detector.update([hand_with_finger(0, 8, x, y_shallow)], zones, 100.035)
     assert not hits
     reasons = [diag["reason"] for diag in detector.diagnostics()]
-    assert "press_line" in reasons or "velocity" in reasons
+    assert "hit" not in reasons
+
+
+def test_default_trigger_fingers_include_thumb():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    zone = zones[0]
+    detector = HitDetector()
+    x = zone.center[0]
+    y_start = zone.y1 + 5
+    y_landing = int(zone.y1 + zone.height * 0.78)
+    detector.update([hand_with_finger(0, 4, x, y_start)], zones, 100.0)
+    hits = detector.update([hand_with_finger(0, 4, x, y_landing)], zones, 100.035)
+    assert len(hits) == 1
+    assert hits[0].finger_id == 4
+
+
+def test_upper_key_landing_can_trigger():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    zone = zones[0]
+    detector = HitDetector()
+    x = zone.center[0]
+    y_start = zone.y1 + 5
+    y_landing = int(zone.y1 + zone.height * 0.32)
+    detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0)
+    hits = detector.update([hand_with_finger(0, 8, x, y_landing)], zones, 100.035)
+    assert len(hits) == 1
+
+
+def test_perspective_key_mapping_uses_landing_x():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    detector = HitDetector()
+    points = [
+        ((724, 551), "D5"),
+        ((801, 608), "E5"),
+        ((910, 569), "F5"),
+        ((418, 502), "G4"),
+    ]
+    for point, expected_label in points:
+        zone = detector._zone_at(zones, point)
+        assert zone is not None
+        assert zone.label == expected_label, f"{point} mapped to {zone.label}, expected {expected_label}"
 
 
 if __name__ == "__main__":
     test_all_fingertips_can_trigger()
-    test_press_line_blocks_shallow_motion()
+    test_short_drop_does_not_trigger()
+    test_default_trigger_fingers_include_thumb()
+    test_upper_key_landing_can_trigger()
+    test_perspective_key_mapping_uses_landing_x()
     print("synthetic hit detector tests passed")

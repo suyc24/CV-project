@@ -1,0 +1,28 @@
+{
+  "frames": 455,
+  "online_hits": 57,
+  "replay_hits": 57,
+  "reason_counts": {
+    "armed": 395,
+    "no_zone": 20,
+    "falling": 38,
+    "hit": 57,
+    "cooldown": 10,
+    "not_armed": 263,
+    "pressed": 194,
+    "press_line": 25,
+    "crossing_velocity": 7,
+    "short_drop": 2,
+    "velocity": 54
+  },
+  "config": {
+    "PIANO_HIT_VELOCITY_THRESHOLD": 150.0,
+    "PIANO_CROSSING_VELOCITY_THRESHOLD": 55.0,
+    "HIT_VELOCITY_THRESHOLD": 850.0,
+    "PIANO_PRESS_RATIO": 0.35,
+    "PIANO_RELEASE_RATIO": 0.3,
+    "PIANO_HIT_X_MARGIN_RATIO": 0.06,
+    "PIANO_HIT_TOP_MARGIN_RATIO": 0.28,
+    "PIANO_HIT_BOTTOM_MARGIN_RATIO": 0.18
+  }
+}

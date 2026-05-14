@@ -118,6 +118,108 @@ Replay results:
 
 Tradeoff: this is intentionally more playable and forgiving. If later sessions show accidental hover-triggering, add a user-facing sensitivity preset rather than hard-coding a stricter default.
 
+## Fifth Interaction Model Adjustment
+
+User feedback from the updated `test03`: the piano trigger should behave more like a real key press, and the visual keyboard should feel attached to the desk plane rather than pasted onto the screen.
+
+Changes:
+
+- Replaced piano hit logic with a per-finger motion state machine:
+  - `idle`
+  - `raised/armed`
+  - `falling`
+  - `pressed`
+- A piano hit now requires an up/down gesture:
+  - finger is armed by moving upward or staying in a lifted state;
+  - finger moves downward;
+  - landing point is inside a key polygon;
+  - drop distance and strike velocity are large enough;
+  - the finger must lift a minimum pixel distance before repeating.
+- Added new tuning parameters:
+  - `PIANO_ARM_RATIO = 0.28`
+  - `PIANO_PRESS_RATIO = 0.35`
+  - `PIANO_RELEASE_RATIO = 0.30`
+  - `PIANO_FALLING_VELOCITY_THRESHOLD = 45`
+  - `PIANO_STRIKE_MIN_DROP_PX = 18`
+  - `PIANO_STRIKE_MIN_VELOCITY = 110`
+  - `PIANO_RELEASE_LIFT_PX = 14`
+- Converted piano keys from screen rectangles to projected quadrilateral zones.
+  - Each key stores a `polygon`.
+  - Hit testing uses point-in-polygon before the fallback margin check.
+  - Session recordings now serialize polygons.
+- Rendered the keybed with a perspective warp into the same quadrilateral plane used for hit testing.
+  - This gives a more VR/AR-like “on the desk” feel.
+  - Hands are still composited above the keyboard layer.
+
+Replay results with the landing-anywhere state machine:
+
+- `test03`: 93 hits.
+- `test02`: 177 hits.
+- `test01`: 259 hits.
+
+The important qualitative change is that hits no longer depend on crossing a contact line. They are produced by a lifted/falling/landing sequence where the landing point can be anywhere inside a key.
+
+## Sixth Precision/Performance Adjustment
+
+User feedback from the latest `test03`: FPS is low, and an intended right-index tap can be reported as the thumb's key.
+
+Root causes:
+
+- FPS was spending avoidable CPU in per-frame perspective keybed generation, full-frame alpha blending, hand cutout blur, and debug frame-quality metrics.
+- The thumb landmark is less stable in the current laptop-camera angle. In the video it can make a large apparent motion when the hand rotates, so a thumb candidate may outscore the intended long finger.
+
+Changes:
+
+- Cached the perspective piano keybed warp and masks instead of regenerating them every frame.
+- Restricted alpha blending to the nonzero mask bounding box.
+- Reduced default MediaPipe input width:
+  - `TRACKING_MAX_WIDTH = 416`
+- Sampled debug frame-quality metrics every `0.5s` instead of every frame.
+- Reduced hand cutout blur kernel:
+  - `HAND_CUTOUT_BLUR_KERNEL = 17`
+- Added runtime performance switches:
+  - `--no-hand-cutout`
+  - `--no-fingertip-markers`
+  - `--max-hands 1`
+- Kept 10 fingertip visualization and later restored all 10 fingertips as default triggers:
+  - `TRIGGER_FINGER_IDS = (4, 8, 12, 16, 20)`
+  - Use `--no-trigger-thumb` to temporarily disable thumb triggering on unstable camera angles.
+- Changed piano motion measurement to use each fingertip relative to its own base joint, not only absolute screen y motion.
+- Added same-hand candidate arbitration:
+  - `PIANO_MAX_HITS_PER_HAND_PER_FRAME = 1`
+  - The strongest falling/landing candidate wins; weaker same-frame candidates are marked `suppressed_by_finger`.
+
+Replay results:
+
+- Latest `test03` before restoring thumb triggering: 6 replay hits, all from long fingers.
+- `test02`: 87 replay hits, so the change does not globally kill playability on the longer sample.
+
+Tradeoff: thumb triggering is now enabled for the intended 10-finger interaction. The `--no-trigger-thumb` switch remains useful for camera angles where the thumb landmark is unstable.
+
+## Seventh Key-Mapping Fix
+
+User feedback from the updated `test03`: different right-hand fingers still sounded like the same key.
+
+Root cause:
+
+- The perspective key polygons were being drawn correctly, but `_point_in_polygon()` used `max(1e-9, yj - yi)` as a denominator guard.
+- When an edge went upward, `yj - yi` was negative, so the denominator was incorrectly replaced with `1e-9`.
+- This made some polygon intersections enormous and caused points to the right of a key to be incorrectly counted inside earlier keys. In `test03`, many right-hand fingertip positions were swallowed by `C5`.
+
+Changes:
+
+- Fixed `_point_in_polygon()` to preserve the denominator sign and only guard true near-zero denominators.
+- Added a regression test for perspective piano key mapping using points from `test03`.
+
+Replay results on latest `test03`:
+
+- Before fix: `C5` dominated with 10 / 17 hits.
+- After fix: 18 hits spread across the landing positions:
+  - `D5`, `E5`, `F5`, `G5`, `A5`
+  - plus left-hand lower keys such as `C4`, `D4`, `F4`, `G4`
+
+This directly addresses the “no matter which right-hand finger I lift, it triggers one key” failure.
+
 ## Product-Level Roadmap
 
 1. Stabilize performance to 20+ FPS.
@@ -125,10 +227,10 @@ Tradeoff: this is intentionally more playable and forgiving. If later sessions s
    - Run MediaPipe on a tighter ROI.
    - Consider a worker thread for hand tracking so UI/audio does not block.
 
-2. Replace pure velocity thresholding with a note state machine.
-   - States: `released -> armed -> pressed -> held -> released`.
-   - Trigger on downward crossing of the press line, not merely being below it.
-   - Add per-finger adaptive baseline to tolerate different hand heights.
+2. Refine the note state machine with calibration data.
+   - Add per-finger adaptive baselines to tolerate different hand heights.
+   - Learn a comfortable landing/release band during a short warmup.
+   - Add sensitivity presets on top of the state machine instead of changing single thresholds by hand.
 
 3. Add calibration for the interaction surface.
    - Current fixed ROI is acceptable for a demo but not product grade.
