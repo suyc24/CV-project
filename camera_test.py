@@ -42,7 +42,7 @@ for idx in range(6):
         if ret and frame is not None and frame.mean() > 1:  # 非全黑
             print(f"  ✅ {name} WORKS! Shape: {frame.shape}")
             # 保存一张作为凭证
-            cv2.imwrite(f"test_camera_{idx}_{name}.jpg", frame)
+            cv2.imwrite(f"{save_dir}/test_camera_{idx}_{name}.jpg", frame)
         else:
             print(f"  ❌ {name} fails or returns black frame")
     cap.release()
