@@ -101,6 +101,37 @@ class HitDetector:
                 state.trail.append(position)
                 previous_position = state.previous_position
                 previous_relative_y = state.previous_relative_y
+                unstable_tracking = self._finger_tracking_unstable(hand, finger_id)
+                if unstable_tracking:
+                    velocity_y = self._observe_unstable_tracking(state, position, relative_y, current_time)
+                    zone = self._zone_at(zones, position)
+                    depth_observation = (depth_observations or {}).get((hand.hand_id, finger_id))
+                    self._diagnostics.append(
+                        {
+                            "hand_id": hand.hand_id,
+                            "finger_id": finger_id,
+                            "finger_name": FINGER_NAMES.get(finger_id, f"F{finger_id}"),
+                            "x": x,
+                            "y": y,
+                            "relative_y": relative_y,
+                            "velocity_y": velocity_y,
+                            "relative_velocity_y": state.smoothed_relative_velocity_y,
+                            "zone_label": zone.label if zone else None,
+                            "zone_kind": zone.kind if zone else None,
+                            "pressed": state.is_pressed,
+                            "motion_state": state.motion_state,
+                            "reason": "unstable_tracking" if zone else "no_zone",
+                            "threshold": self._threshold_for(zone) if zone else None,
+                            "press_y": zone.press_y if zone else None,
+                            "depth_contact": depth_observation.contact if depth_observation else None,
+                            "depth_height_m": depth_observation.height_above_desk_m if depth_observation else None,
+                            "depth_reason": depth_observation.reason if depth_observation else None,
+                            "tracking_source": getattr(hand, "tracking_source", "mediapipe"),
+                            "missed_frames": getattr(hand, "missed_frames", 0),
+                            "unstable_tracking": True,
+                        }
+                    )
+                    continue
                 velocity_y = self._update_velocity(state, position, relative_y, current_time)
                 zone = self._zone_at(zones, position)
                 self._update_release_state(state, zone, y, relative_y)
@@ -136,6 +167,9 @@ class HitDetector:
                     "depth_contact": depth_observation.contact if depth_observation else None,
                     "depth_height_m": depth_observation.height_above_desk_m if depth_observation else None,
                     "depth_reason": depth_observation.reason if depth_observation else None,
+                    "tracking_source": getattr(hand, "tracking_source", "mediapipe"),
+                    "missed_frames": getattr(hand, "missed_frames", 0),
+                    "unstable_tracking": False,
                 }
                 self._diagnostics.append(diagnostic)
                 if zone and reason == "hit":
@@ -191,7 +225,7 @@ class HitDetector:
         velocity_y: float,
     ) -> HitEvent:
         hit_velocity = self._hit_velocity(state, velocity_y)
-        volume = self._velocity_to_volume(hit_velocity)
+        volume = self._velocity_to_volume(hit_velocity, zone)
         hit = HitEvent(
             note_id=zone.label,
             sound_id=zone.sound_id,
@@ -234,6 +268,15 @@ class HitDetector:
     def _motion_velocity(self, state: FingerState) -> float:
         return state.smoothed_relative_velocity_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else state.smoothed_velocity_y
 
+    def _finger_tracking_unstable(self, hand: "HandLandmarks", finger_id: int) -> bool:
+        if not config.PIANO_BLOCK_UNSTABLE_LANDMARK_HITS:
+            return False
+        if getattr(hand, "tracking_source", "mediapipe") == "optical_flow":
+            return True
+        if getattr(hand, "missed_frames", 0) > 0:
+            return True
+        return finger_id in set(getattr(hand, "unstable_landmark_ids", ()))
+
     def _update_velocity(self, state: FingerState, position: Tuple[int, int], relative_y: float, current_time: float) -> float:
         if state.previous_position is None or state.previous_timestamp is None:
             state.previous_position = position
@@ -256,6 +299,30 @@ class HitDetector:
         state.previous_relative_y = relative_y
         state.previous_timestamp = current_time
         state.recent_motion.append((current_time, position[1], relative_y))
+        return state.smoothed_velocity_y
+
+    def _observe_unstable_tracking(
+        self,
+        state: FingerState,
+        position: Tuple[int, int],
+        relative_y: float,
+        current_time: float,
+    ) -> float:
+        state.previous_position = position
+        state.previous_relative_y = relative_y
+        state.previous_timestamp = current_time
+        state.recent_motion.append((current_time, position[1], relative_y))
+        state.raw_velocity_y = 0.0
+        state.raw_relative_velocity_y = 0.0
+        state.smoothed_velocity_y *= 0.35
+        state.smoothed_relative_velocity_y *= 0.35
+        state.max_down_velocity = 0.0
+        state.max_down_relative_velocity = 0.0
+        if not state.is_pressed and state.motion_state == "falling":
+            state.motion_state = "raised"
+            state.falling_frames = 0
+            state.peak_y = position[1]
+            state.peak_relative_y = relative_y
         return state.smoothed_velocity_y
 
     def _update_release_state(self, state: FingerState, zone: Optional[Zone], finger_y: int, relative_y: float) -> None:
@@ -664,7 +731,13 @@ class HitDetector:
     def _threshold_for(self, zone: Zone) -> float:
         return config.PIANO_HIT_VELOCITY_THRESHOLD if zone.kind == "piano" else config.HIT_VELOCITY_THRESHOLD
 
-    def _velocity_to_volume(self, velocity_y: float) -> float:
+    def _velocity_to_volume(self, velocity_y: float, zone: Zone) -> float:
+        if zone.kind == "piano":
+            normalized = (
+                (velocity_y - config.PIANO_HIT_MIN_VELOCITY)
+                / (config.PIANO_HIT_MAX_VELOCITY - config.PIANO_HIT_MIN_VELOCITY)
+            )
+            return clamp(normalized, config.PIANO_MIN_VOLUME, 1.0)
         normalized = (velocity_y - config.HIT_MIN_VELOCITY) / (config.HIT_MAX_VELOCITY - config.HIT_MIN_VELOCITY)
         return clamp(normalized, 0.2, 1.0)
 

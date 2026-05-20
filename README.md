@@ -343,7 +343,8 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 - Piano 可视琴键默认覆盖整个底部演奏面。实际命中区域只比可视琴键略大，用来容忍边界误差。
 - Piano 使用 `lifting -> raised -> falling -> pressed` 状态机，更接近真实钢琴的“抬起、下落、触键”动作。
 - `lifting` 必须累计至少 `PIANO_ARM_MIN_LIFT_PX` 的抬起幅度才会进入可触发状态；`pressed` 后也要连续 `PIANO_RELEASE_STABLE_FRAMES` 帧满足抬起距离才会 release。这样可以过滤 MediaPipe 在手指贴近镜头或停在键盘上时的轻微抖动。
-- 如果还是触发困难，可以继续降低 `config.py` 中的 `PIANO_STRIKE_MIN_VELOCITY`，例如从当前默认 `95` 调到 `80`，或把 `PIANO_STRIKE_MIN_DROP_PX` 从当前默认 `16` 调到 `12`。
+- 如果某个指尖点明显偏离光流预测，或刚从短暂丢手中恢复，系统会把该指尖标记为 `unstable_tracking`。这类帧不会更新下落状态，也不会触发琴键，避免把 MediaPipe 跳点当成敲击。
+- 如果还是触发困难，可以继续降低 `config.py` 中的 `PIANO_STRIKE_MIN_VELOCITY`，例如从当前默认 `80` 调到 `70`，或把 `PIANO_STRIKE_MIN_DROP_PX` 从当前默认 `12` 调到 `10`。
 - 如果误触发较多，优先增大 `PIANO_ARM_MIN_LIFT_PX` 或 `PIANO_RELEASE_STABLE_FRAMES`；其次再调高 `PIANO_STRIKE_MIN_VELOCITY`，或增大 `PIANO_STRIKE_MIN_DROP_PX` / `PIANO_RELEASE_LIFT_PX`。
 
 手势控制：
@@ -373,7 +374,7 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 
 `hand_tracker.py` 使用 MediaPipe Hands 获取每只手的 21 个 landmarks，并把归一化坐标转换为像素坐标。UI 默认不绘制骨架线，而是用 landmarks 估计手部区域，把真实摄像头里的手抠回到钢琴图层上方，并用小圆点标出 10 个指尖。
 
-为了减少指尖靠近镜头时的跳点，当前版本会先做稳定 hand id 分配，再对指尖和指根等关键点使用 OpenCV Lucas-Kanade 光流进行时序稳定：MediaPipe 给出粗位置，光流提供相邻帧连续运动估计；当二者差异过大时，系统会降低单帧 MediaPipe 点的权重。
+为了减少指尖靠近镜头时的跳点，当前版本会先做稳定 hand id 分配，再对指尖和指根等关键点使用 OpenCV Lucas-Kanade 光流进行时序稳定：MediaPipe 给出粗位置，光流提供相邻帧连续运动估计；当二者差异过大时，系统会降低单帧 MediaPipe 点的权重，并把对应 landmark 标记为不稳定，禁止这一帧触发音符。
 
 为了提高实时性，当前版本默认只把画面下方桌面附近 ROI 送入 MediaPipe，并把输入宽度限制到 `TRACKING_MAX_WIDTH`。如果 ROI 内没检测到手，会自动用整帧再跑一次重捕获。若 MediaPipe 连续少量帧丢手，系统会用上一帧 landmarks 的光流预测短暂桥接，最多 `TRACKING_BRIDGE_MAX_FRAMES` 帧；桥接帧仍可用于触键，但不会用于手势 loop 控制。
 
@@ -465,6 +466,8 @@ volume = clamp(
 )
 ```
 
+Piano 模式单独使用更低的视觉速度范围：`PIANO_HIT_MIN_VELOCITY`、`PIANO_HIT_MAX_VELOCITY` 和 `PIANO_MIN_VOLUME`。这是因为钢琴状态机使用的是相对指尖运动，数值通常显著低于 drum 的屏幕 y 方向速度。
+
 这里估计的是视觉上的**相对力度**，不是精确真实物理力。
 
 ### Gesture-Controlled Loop Station
@@ -502,7 +505,7 @@ volume = clamp(
 - 敲击不触发：降低 `HIT_VELOCITY_THRESHOLD`，或把摄像头放低一点，让指尖运动在画面中更明显。
 - 太容易误触发：提高 `HIT_VELOCITY_THRESHOLD`，增大 `HIT_COOLDOWN`，或提高 `PRESS_RATIO`。
 - 必须抬很高才能再次触发：增大 `RELEASE_RATIO`；想更严格则减小它。
-- 音量变化不明显：调整 `HIT_MIN_VELOCITY` 和 `HIT_MAX_VELOCITY`。
+- 音量变化不明显：drum 调整 `HIT_MIN_VELOCITY` / `HIT_MAX_VELOCITY`；piano 调整 `PIANO_HIT_MIN_VELOCITY` / `PIANO_HIT_MAX_VELOCITY`。
 - 手势太敏感：提高 `GESTURE_STABLE_FRAMES` 或 `GESTURE_COOLDOWN`。
 
 ## 自动测试

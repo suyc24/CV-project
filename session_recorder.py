@@ -114,6 +114,7 @@ def _hand_to_dict(hand: HandLandmarks) -> Dict[str, Any]:
         "label": hand.label,
         "tracking_source": getattr(hand, "tracking_source", "mediapipe"),
         "missed_frames": getattr(hand, "missed_frames", 0),
+        "unstable_landmark_ids": list(getattr(hand, "unstable_landmark_ids", ())),
         "landmarks": [[int(x), int(y), float(z)] for x, y, z in hand.landmarks],
         "normalized_landmarks": [[float(x), float(y), float(z)] for x, y, z in hand.normalized_landmarks],
     }

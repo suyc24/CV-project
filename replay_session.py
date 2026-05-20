@@ -87,6 +87,9 @@ def main() -> int:
             "PIANO_JITTER_GUARD_ENABLED": config.PIANO_JITTER_GUARD_ENABLED,
             "PIANO_STRIKE_MIN_NET_DROP_PX": config.PIANO_STRIKE_MIN_NET_DROP_PX,
             "PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX": config.PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX,
+            "PIANO_HIT_MIN_VELOCITY": config.PIANO_HIT_MIN_VELOCITY,
+            "PIANO_HIT_MAX_VELOCITY": config.PIANO_HIT_MAX_VELOCITY,
+            "PIANO_MIN_VOLUME": config.PIANO_MIN_VOLUME,
             "PIANO_USE_RELATIVE_FINGER_MOTION": config.PIANO_USE_RELATIVE_FINGER_MOTION,
             "PIANO_MAX_HITS_PER_HAND_PER_FRAME": config.PIANO_MAX_HITS_PER_HAND_PER_FRAME,
             "TRIGGER_FINGER_IDS": config.TRIGGER_FINGER_IDS,
@@ -134,6 +137,7 @@ def _hand_from_dict(hand: Dict[str, object]):
         landmarks=[tuple(point) for point in hand.get("landmarks", [])],
         tracking_source=str(hand.get("tracking_source", "mediapipe")),
         missed_frames=int(hand.get("missed_frames", 0)),
+        unstable_landmark_ids=tuple(int(value) for value in hand.get("unstable_landmark_ids", ())),
     )
 
 

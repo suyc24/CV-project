@@ -32,6 +32,7 @@ class HandLandmarks:
     normalized_landmarks: List[Tuple[float, float, float]]
     tracking_source: str = "mediapipe"
     missed_frames: int = 0
+    unstable_landmark_ids: Tuple[int, ...] = ()
 
 
 class HandTracker:
@@ -59,6 +60,7 @@ class HandTracker:
         self._flow_points: Dict[Tuple[int, int], Tuple[float, float]] = {}
         self._last_good_hands: List[HandLandmarks] = []
         self._missed_frame_count = 0
+        self._reacquire_guard_frames = 0
 
         try:
             self._init_legacy_hands(
@@ -162,10 +164,19 @@ class HandTracker:
             self._clear_after_miss(frame_bgr)
             return []
 
+        missed_before = self._missed_frame_count
         self._missed_frame_count = 0
         hands = self._assign_stable_hand_ids(hands)
         hands = self._smooth(hands)
         hands = self._stabilize_with_optical_flow(frame_bgr, hands)
+        if missed_before > 0:
+            self._reacquire_guard_frames = max(
+                self._reacquire_guard_frames,
+                int(config.TRACKING_REACQUIRE_HIT_BLOCK_FRAMES),
+            )
+        if self._reacquire_guard_frames > 0:
+            hands = self._mark_unstable(hands, config.TRIGGER_FINGER_IDS)
+            self._reacquire_guard_frames -= 1
         self._last_good_hands = self._copy_hands(hands)
         return hands
 
@@ -181,6 +192,7 @@ class HandTracker:
         self._flow_points.clear()
         self._last_good_hands = []
         self._missed_frame_count = 0
+        self._reacquire_guard_frames = 0
         self._last_gray = None
 
     def _process_legacy(
@@ -208,7 +220,15 @@ class HandTracker:
                 self._map_point(lm.x, lm.y, lm.z, width, height, offset, scale)
                 for lm in hand_lms.landmark
             ]
-            hands.append(HandLandmarks(hand_id=hand_id, label=label, landmarks=pixels, normalized_landmarks=normalized))
+            hands.append(
+                HandLandmarks(
+                    hand_id=hand_id,
+                    label=label,
+                    landmarks=pixels,
+                    normalized_landmarks=normalized,
+                    tracking_source="legacy",
+                )
+            )
         return hands
 
     def _process_tasks(
@@ -310,6 +330,7 @@ class HandTracker:
                     normalized_landmarks=hand.normalized_landmarks,
                     tracking_source=hand.tracking_source,
                     missed_frames=hand.missed_frames,
+                    unstable_landmark_ids=hand.unstable_landmark_ids,
                 )
             )
         for key in list(self._smoothed_points):
@@ -356,6 +377,7 @@ class HandTracker:
                     normalized_landmarks=detected.normalized_landmarks,
                     tracking_source=detected.tracking_source,
                     missed_frames=detected.missed_frames,
+                    unstable_landmark_ids=detected.unstable_landmark_ids,
                 )
             )
 
@@ -383,6 +405,7 @@ class HandTracker:
             outlier_distance = config.OPTICAL_FLOW_OUTLIER_DISTANCE_PX + scale * 0.035
             max_step = config.OPTICAL_FLOW_MAX_POINT_STEP_PX + scale * 0.04
             stabilized_landmarks = []
+            unstable_ids = set(hand.unstable_landmark_ids)
             for idx, (x, y, z) in enumerate(hand.landmarks):
                 key = (hand.hand_id, idx)
                 current = (float(x), float(y))
@@ -391,6 +414,8 @@ class HandTracker:
 
                 if idx in config.OPTICAL_FLOW_LANDMARK_IDS and prediction is not None:
                     distance_to_model = math.hypot(current[0] - prediction[0], current[1] - prediction[1])
+                    if distance_to_model > outlier_distance:
+                        unstable_ids.add(idx)
                     raw_weight = (
                         config.OPTICAL_FLOW_OUTLIER_RAW_WEIGHT
                         if distance_to_model > outlier_distance
@@ -404,6 +429,8 @@ class HandTracker:
                     sx, sy = current
 
                 if previous is not None and idx in config.OPTICAL_FLOW_LANDMARK_IDS:
+                    if math.hypot(sx - previous[0], sy - previous[1]) > max_step:
+                        unstable_ids.add(idx)
                     sx, sy = self._limit_point_step(previous, (sx, sy), max_step)
                 next_flow_points[key] = (sx, sy)
                 stabilized_landmarks.append((int(round(sx)), int(round(sy)), z))
@@ -416,6 +443,7 @@ class HandTracker:
                     normalized_landmarks=hand.normalized_landmarks,
                     tracking_source=hand.tracking_source,
                     missed_frames=hand.missed_frames,
+                    unstable_landmark_ids=tuple(sorted(unstable_ids)),
                 )
             )
 
@@ -496,6 +524,7 @@ class HandTracker:
                     normalized_landmarks=hand.normalized_landmarks,
                     tracking_source="optical_flow",
                     missed_frames=self._missed_frame_count,
+                    unstable_landmark_ids=tuple(config.TRIGGER_FINGER_IDS),
                 )
             )
 
@@ -514,6 +543,7 @@ class HandTracker:
         self._flow_points.clear()
         self._last_good_hands = []
         self._missed_frame_count = 0
+        self._reacquire_guard_frames = 0
         self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
 
     def _optical_flow_predictions(
@@ -608,6 +638,24 @@ class HandTracker:
         ys = [point[1] for point in landmarks]
         return max(1.0, math.hypot(max(xs) - min(xs), max(ys) - min(ys)))
 
+    def _mark_unstable(self, hands: List[HandLandmarks], landmark_ids: Tuple[int, ...]) -> List[HandLandmarks]:
+        marked: List[HandLandmarks] = []
+        mark_ids = set(landmark_ids)
+        for hand in hands:
+            unstable = tuple(sorted(set(hand.unstable_landmark_ids) | mark_ids))
+            marked.append(
+                HandLandmarks(
+                    hand_id=hand.hand_id,
+                    label=hand.label,
+                    landmarks=hand.landmarks,
+                    normalized_landmarks=hand.normalized_landmarks,
+                    tracking_source=hand.tracking_source,
+                    missed_frames=hand.missed_frames,
+                    unstable_landmark_ids=unstable,
+                )
+            )
+        return marked
+
     def _copy_hands(self, hands: List[HandLandmarks]) -> List[HandLandmarks]:
         return [
             HandLandmarks(
@@ -617,6 +665,7 @@ class HandTracker:
                 normalized_landmarks=list(hand.normalized_landmarks),
                 tracking_source=hand.tracking_source,
                 missed_frames=hand.missed_frames,
+                unstable_landmark_ids=tuple(hand.unstable_landmark_ids),
             )
             for hand in hands
         ]
