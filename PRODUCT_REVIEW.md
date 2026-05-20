@@ -220,6 +220,68 @@ Replay results on latest `test03`:
 
 This directly addresses the “no matter which right-hand finger I lift, it triggers one key” failure.
 
+## Eighth Anti-Jitter State Machine Update
+
+User feedback from the refreshed `test01/test02`: when a hand rests on the keyboard, tiny MediaPipe landmark jitter can still trigger notes, especially when fingers are close to the camera.
+
+Root cause:
+
+- The previous state machine released a pressed finger from a single upward-velocity spike.
+- A later one-frame downward jump could arm and trigger a new hit, even if the physical finger had barely moved.
+- This is common when MediaPipe loses fingertip stability near the camera or around occlusions.
+
+Changes:
+
+- Added a `lifting` state before `raised`.
+- A finger must accumulate a real lift before it can become armed:
+  - `PIANO_ARM_MIN_LIFT_PX = 18`
+- A pressed finger must satisfy release distance for consecutive frames:
+  - `PIANO_RELEASE_STABLE_FRAMES = 2`
+- Removed the permissive one-frame direct-hit path when the finger was not already in a falling state.
+- Added synthetic regression tests:
+  - pressed finger jitter does not retrigger;
+  - short lift then drop does not trigger;
+  - clear lift then drop still retriggers.
+
+Replay results on refreshed sessions:
+
+- `test01`: `182 -> 93` replay hits.
+- `test02`: `138 -> 72` replay hits.
+- Same-finger repeat hits under `0.35s`: `13 -> 0` on both sessions.
+
+This is a deliberate product-level tradeoff: fewer accidental notes while a hand is resting on the virtual keys, with slightly stricter requirements for repeated taps.
+
+## Ninth Fingertip Precision Update
+
+User feedback: MediaPipe fingertip points can still jump when fingers are close to the camera, so the hand can be physically still while the detected fingertip bounces enough to trigger notes.
+
+Decision:
+
+- Training a new VLM is not the right next step for this prototype. The latency, labeling cost, and real-time deployment complexity are too high for a webcam piano interaction.
+- The better product path is a dedicated hand/fingertip keypoint tracker plus temporal filtering, with recorded sessions as a regression set.
+
+Changes:
+
+- Added stable hand-id assignment so per-finger state is less affected by MediaPipe hand order changes.
+- Added OpenCV Lucas-Kanade optical-flow stabilization for selected fingertip and finger-base landmarks.
+  - MediaPipe now provides coarse pose.
+  - Optical flow provides frame-to-frame continuity.
+  - Large single-frame disagreement is treated as a likely landmark outlier.
+- Tightened piano release:
+  - release now requires upward motion evidence, or a stronger sustained lift;
+  - this reduces “resting hand” retriggers caused by point jitter.
+- Added piano sensitivity presets:
+  - `stable` default for fewer false notes;
+  - `balanced` and `sensitive` for softer taps.
+
+Replay results after the precision guard:
+
+- `test03`: online 22, replay 19.
+- `test02`: online 138, replay 27, with 26 candidates blocked by `jitter_guard`.
+- `test01`: online 182, replay 58, with 57 candidates blocked by `jitter_guard`.
+
+The offline hit count drops on older sessions because many previous hits looked like short lift/jitter repeats. The default now intentionally favors product stability; if the next live test feels too strict, use `--piano-sensitivity balanced` before loosening the detector further.
+
 ## Product-Level Roadmap
 
 1. Stabilize performance to 20+ FPS.

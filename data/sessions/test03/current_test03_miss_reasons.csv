@@ -1,0 +1,12 @@
+reason,count
+not_armed,409
+armed,373
+pressed,359
+lifting,99
+velocity,33
+short_drop,29
+hit,22
+suppressed_by_finger,6
+lifted,6
+no_zone,5
+short_lift,4

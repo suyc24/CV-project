@@ -40,10 +40,15 @@ class FingerState:
     last_hit_time: float = -999.0
     motion_state: str = "idle"
     armed_zone_id: Optional[str] = None
+    lift_start_y: Optional[int] = None
+    lift_start_relative_y: Optional[float] = None
+    release_ready_frames: int = 0
+    falling_frames: int = 0
     peak_y: Optional[int] = None
     peak_relative_y: Optional[float] = None
     max_down_velocity: float = 0.0
     max_down_relative_velocity: float = 0.0
+    recent_motion: Deque[Tuple[float, int, float]] = field(default_factory=lambda: deque(maxlen=8))
     trail: Deque[Tuple[int, int]] = field(default_factory=lambda: deque(maxlen=config.TRAIL_LENGTH))
 
 
@@ -192,6 +197,10 @@ class HitDetector:
         state.last_hit_time = current_time
         state.motion_state = "pressed"
         state.armed_zone_id = zone.sound_id
+        state.lift_start_y = None
+        state.lift_start_relative_y = None
+        state.release_ready_frames = 0
+        state.falling_frames = 0
         state.peak_y = finger_y
         state.peak_relative_y = relative_y
         state.max_down_velocity = 0.0
@@ -218,6 +227,7 @@ class HitDetector:
             state.previous_position = position
             state.previous_relative_y = relative_y
             state.previous_timestamp = current_time
+            state.recent_motion.append((current_time, position[1], relative_y))
             return state.smoothed_velocity_y
 
         dt = max(1e-3, current_time - state.previous_timestamp)
@@ -233,6 +243,7 @@ class HitDetector:
         state.previous_position = position
         state.previous_relative_y = relative_y
         state.previous_timestamp = current_time
+        state.recent_motion.append((current_time, position[1], relative_y))
         return state.smoothed_velocity_y
 
     def _update_release_state(self, state: FingerState, zone: Optional[Zone], finger_y: int, relative_y: float) -> None:
@@ -245,18 +256,26 @@ class HitDetector:
             state.pressed_relative_y = None
             state.motion_state = "idle"
             state.armed_zone_id = None
+            state.lift_start_y = None
+            state.lift_start_relative_y = None
+            state.release_ready_frames = 0
+            state.falling_frames = 0
             state.peak_y = None
             state.peak_relative_y = None
             state.max_down_velocity = 0.0
             state.max_down_relative_velocity = 0.0
             return
-        if state.pressed_zone_id and zone.sound_id != state.pressed_zone_id:
+        if state.pressed_zone_id and zone.sound_id != state.pressed_zone_id and zone.kind != "piano":
             state.is_pressed = False
             state.pressed_zone_id = None
             state.pressed_y = None
             state.pressed_relative_y = None
             state.motion_state = "idle"
             state.armed_zone_id = None
+            state.lift_start_y = None
+            state.lift_start_relative_y = None
+            state.release_ready_frames = 0
+            state.falling_frames = 0
             state.peak_y = None
             state.peak_relative_y = None
             state.max_down_velocity = 0.0
@@ -264,21 +283,42 @@ class HitDetector:
             return
         if zone.kind == "piano":
             if config.PIANO_USE_RELATIVE_FINGER_MOTION:
+                lift_amount = (
+                    state.pressed_relative_y - relative_y
+                    if state.pressed_relative_y is not None
+                    else 0.0
+                )
                 lifted_enough = (
                     state.pressed_relative_y is not None
-                    and relative_y <= state.pressed_relative_y - config.PIANO_RELEASE_LIFT_PX
+                    and lift_amount >= config.PIANO_RELEASE_LIFT_PX
                 )
-                moving_up = state.smoothed_relative_velocity_y < -config.PIANO_LIFT_VELOCITY_THRESHOLD
             else:
-                lifted_enough = state.pressed_y is not None and finger_y <= state.pressed_y - config.PIANO_RELEASE_LIFT_PX
-                moving_up = state.smoothed_velocity_y < -config.PIANO_LIFT_VELOCITY_THRESHOLD
-            if lifted_enough or moving_up:
+                lift_amount = (
+                    state.pressed_y - finger_y
+                    if state.pressed_y is not None
+                    else 0.0
+                )
+                lifted_enough = state.pressed_y is not None and lift_amount >= config.PIANO_RELEASE_LIFT_PX
+            deliberate_lift = (
+                self._motion_velocity(state) <= -config.PIANO_RELEASE_MIN_UP_VELOCITY
+                or lift_amount >= config.PIANO_RELEASE_LIFT_PX * config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER
+            )
+            lifted_enough = lifted_enough and deliberate_lift
+            if lifted_enough:
+                state.release_ready_frames += 1
+            else:
+                state.release_ready_frames = 0
+            if state.release_ready_frames >= config.PIANO_RELEASE_STABLE_FRAMES:
                 state.is_pressed = False
                 state.pressed_zone_id = None
                 state.pressed_y = None
                 state.pressed_relative_y = None
                 state.motion_state = "raised"
                 state.armed_zone_id = zone.sound_id
+                state.lift_start_y = None
+                state.lift_start_relative_y = None
+                state.release_ready_frames = 0
+                state.falling_frames = 0
                 state.peak_y = finger_y
                 state.peak_relative_y = relative_y
                 state.max_down_velocity = 0.0
@@ -291,6 +331,10 @@ class HitDetector:
             state.pressed_relative_y = None
             state.motion_state = "raised"
             state.armed_zone_id = zone.sound_id
+            state.lift_start_y = None
+            state.lift_start_relative_y = None
+            state.release_ready_frames = 0
+            state.falling_frames = 0
             state.peak_y = finger_y
             state.peak_relative_y = relative_y
             state.max_down_velocity = 0.0
@@ -358,16 +402,49 @@ class HitDetector:
         arm_y = zone.y1 + config.PIANO_ARM_RATIO * zone.height
         motion_y = relative_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else finger_y
         motion_velocity = self._motion_velocity(state)
-        raw_motion_velocity = state.raw_relative_velocity_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else state.raw_velocity_y
 
-        if motion_velocity < -config.PIANO_LIFT_VELOCITY_THRESHOLD and state.motion_state != "falling":
-            state.motion_state = "raised"
-            state.armed_zone_id = zone.sound_id
-            state.peak_y = finger_y if state.peak_y is None else min(state.peak_y, finger_y)
-            state.peak_relative_y = motion_y if state.peak_relative_y is None else min(state.peak_relative_y, motion_y)
-            state.max_down_velocity = 0.0
-            state.max_down_relative_velocity = 0.0
-            return "armed"
+        if previous_position is not None:
+            previous_motion_y = previous_relative_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else previous_position[1]
+            if previous_motion_y is None:
+                previous_motion_y = motion_y
+        else:
+            previous_motion_y = motion_y
+
+        if state.motion_state == "lifting" or (
+            motion_velocity < -config.PIANO_LIFT_VELOCITY_THRESHOLD
+            and state.motion_state not in {"falling", "pressed"}
+        ):
+            if state.motion_state != "lifting":
+                state.motion_state = "lifting"
+                state.armed_zone_id = zone.sound_id
+                state.lift_start_y = previous_position[1] if previous_position is not None else finger_y
+                state.lift_start_relative_y = previous_motion_y
+                state.peak_y = min(state.lift_start_y, finger_y)
+                state.peak_relative_y = min(state.lift_start_relative_y, motion_y)
+                state.max_down_velocity = 0.0
+                state.max_down_relative_velocity = 0.0
+            else:
+                state.armed_zone_id = zone.sound_id
+                state.peak_y = finger_y if state.peak_y is None else min(state.peak_y, finger_y)
+                state.peak_relative_y = motion_y if state.peak_relative_y is None else min(state.peak_relative_y, motion_y)
+
+            lift_px = self._lift_distance(state, finger_y, relative_y)
+            if lift_px >= config.PIANO_ARM_MIN_LIFT_PX or finger_y <= arm_y:
+                state.motion_state = "raised"
+                state.falling_frames = 0
+                return "armed"
+            if motion_velocity > config.PIANO_FALLING_VELOCITY_THRESHOLD:
+                state.motion_state = "idle"
+                state.armed_zone_id = None
+                state.lift_start_y = None
+                state.lift_start_relative_y = None
+                state.peak_y = None
+                state.peak_relative_y = None
+                state.max_down_velocity = 0.0
+                state.max_down_relative_velocity = 0.0
+                state.falling_frames = 0
+                return "short_lift"
+            return "lifting"
 
         if state.motion_state in {"raised", "falling"} and zone.sound_id != state.armed_zone_id:
             state.armed_zone_id = zone.sound_id
@@ -377,7 +454,7 @@ class HitDetector:
                 motion_y,
             )
 
-        can_start_fall = state.motion_state in {"raised", "falling"} or previous_position is not None
+        can_start_fall = state.motion_state in {"raised", "falling"}
         if motion_velocity > config.PIANO_FALLING_VELOCITY_THRESHOLD and can_start_fall:
             if state.motion_state != "falling":
                 candidate_peak = previous_position[1] if previous_position is not None else finger_y
@@ -387,17 +464,24 @@ class HitDetector:
                     previous_relative_y if previous_relative_y is not None else motion_y,
                     motion_y,
                 )
+                state.falling_frames = 1
+            else:
+                state.falling_frames += 1
             state.motion_state = "falling"
             state.armed_zone_id = state.armed_zone_id or zone.sound_id
             state.max_down_velocity = max(state.max_down_velocity, velocity_y)
             state.max_down_relative_velocity = max(state.max_down_relative_velocity, motion_velocity)
         elif state.motion_state == "falling":
+            state.falling_frames += 1
             state.max_down_velocity = max(state.max_down_velocity, velocity_y)
             state.max_down_relative_velocity = max(state.max_down_relative_velocity, motion_velocity)
 
         if finger_y <= arm_y and state.motion_state != "falling":
             state.motion_state = "raised"
             state.armed_zone_id = zone.sound_id
+            state.lift_start_y = None
+            state.lift_start_relative_y = None
+            state.falling_frames = 0
             state.peak_y = finger_y if state.peak_y is None else min(state.peak_y, finger_y)
             state.peak_relative_y = motion_y if state.peak_relative_y is None else min(state.peak_relative_y, motion_y)
             state.max_down_velocity = 0.0
@@ -407,6 +491,9 @@ class HitDetector:
         if state.motion_state == "falling" and motion_velocity < -config.PIANO_LIFT_VELOCITY_THRESHOLD:
             state.motion_state = "raised"
             state.armed_zone_id = zone.sound_id
+            state.lift_start_y = None
+            state.lift_start_relative_y = None
+            state.falling_frames = 0
             state.peak_y = finger_y
             state.peak_relative_y = motion_y
             state.max_down_velocity = 0.0
@@ -414,26 +501,18 @@ class HitDetector:
             return "lifted"
 
         if state.motion_state != "falling":
-            if previous_position is not None:
-                previous_motion_y = previous_relative_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else previous_position[1]
-                if previous_motion_y is None:
-                    previous_motion_y = motion_y
-                direct_drop = motion_y - previous_motion_y
-                direct_velocity = max(motion_velocity, raw_motion_velocity)
-                if direct_drop >= config.PIANO_STRIKE_MIN_DROP_PX * 0.5 and direct_velocity >= config.PIANO_STRIKE_MIN_VELOCITY:
-                    state.max_down_velocity = max(state.max_down_velocity, direct_velocity)
-                    state.max_down_relative_velocity = max(state.max_down_relative_velocity, direct_velocity)
-                    return "hit"
-                if direct_drop < config.PIANO_STRIKE_MIN_DROP_PX * 0.5:
-                    return "short_drop"
-                return "strike_velocity"
             return "not_armed"
+
+        if state.falling_frames < config.PIANO_MIN_FALL_FRAMES:
+            return "falling"
 
         drop_px = self._drop_distance(state, finger_y, relative_y)
         if drop_px < config.PIANO_STRIKE_MIN_DROP_PX:
             return "short_drop"
 
         strike_velocity = self._hit_velocity(state, velocity_y)
+        if config.PIANO_JITTER_GUARD_ENABLED and not self._passes_piano_jitter_guard(state, strike_velocity, drop_px):
+            return "jitter_guard"
         if strike_velocity >= config.PIANO_STRIKE_MIN_VELOCITY:
             return "hit"
         return "velocity"
@@ -445,30 +524,93 @@ class HitDetector:
         peak = state.peak_y if state.peak_y is not None else finger_y
         return float(finger_y - peak)
 
+    def _lift_distance(self, state: FingerState, finger_y: int, relative_y: float) -> float:
+        if config.PIANO_USE_RELATIVE_FINGER_MOTION:
+            start = state.lift_start_relative_y if state.lift_start_relative_y is not None else relative_y
+            peak = state.peak_relative_y if state.peak_relative_y is not None else relative_y
+            return start - peak
+        start_y = state.lift_start_y if state.lift_start_y is not None else finger_y
+        peak_y = state.peak_y if state.peak_y is not None else finger_y
+        return float(start_y - peak_y)
+
+    def _passes_piano_jitter_guard(self, state: FingerState, strike_velocity: float, drop_px: float) -> bool:
+        if len(state.recent_motion) < 2:
+            return False
+        net_drop = self._recent_net_drop(state)
+        if net_drop < config.PIANO_STRIKE_MIN_NET_DROP_PX:
+            return False
+
+        if state.falling_frames >= max(1, config.PIANO_MIN_FALL_FRAMES + 1):
+            return True
+
+        strong_drop = drop_px >= config.PIANO_STRIKE_MIN_DROP_PX * config.PIANO_STRIKE_STRONG_DROP_MULTIPLIER
+        strong_velocity = strike_velocity >= config.PIANO_STRIKE_MIN_VELOCITY * config.PIANO_STRIKE_STRONG_VELOCITY_MULTIPLIER
+        if strong_drop and strong_velocity:
+            return True
+
+        return self._last_frame_drop(state) <= config.PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX
+
+    def _recent_net_drop(self, state: FingerState) -> float:
+        values = [entry[2] if config.PIANO_USE_RELATIVE_FINGER_MOTION else float(entry[1]) for entry in state.recent_motion]
+        if not values:
+            return 0.0
+        return values[-1] - min(values)
+
+    def _last_frame_drop(self, state: FingerState) -> float:
+        if len(state.recent_motion) < 2:
+            return 0.0
+        previous = state.recent_motion[-2]
+        current = state.recent_motion[-1]
+        if config.PIANO_USE_RELATIVE_FINGER_MOTION:
+            return current[2] - previous[2]
+        return float(current[1] - previous[1])
+
     def _update_air_motion_state(self, state: FingerState, finger_y: int, relative_y: float) -> None:
         if state.is_pressed:
             return
         motion_y = relative_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else finger_y
         motion_velocity = self._motion_velocity(state)
         if motion_velocity < -config.PIANO_LIFT_VELOCITY_THRESHOLD:
-            state.motion_state = "raised"
+            state.motion_state = "lifting"
             state.armed_zone_id = None
+            if state.lift_start_y is None:
+                state.lift_start_y = finger_y
+            if state.lift_start_relative_y is None:
+                state.lift_start_relative_y = motion_y
             state.peak_y = finger_y if state.peak_y is None else min(state.peak_y, finger_y)
             state.peak_relative_y = motion_y if state.peak_relative_y is None else min(state.peak_relative_y, motion_y)
             state.max_down_velocity = 0.0
             state.max_down_relative_velocity = 0.0
             return
-        if state.motion_state in {"raised", "falling"} and motion_velocity > config.PIANO_FALLING_VELOCITY_THRESHOLD:
+        if state.motion_state in {"lifting", "raised", "falling"} and motion_velocity > config.PIANO_FALLING_VELOCITY_THRESHOLD:
+            if state.motion_state == "lifting" and self._lift_distance(state, finger_y, relative_y) < config.PIANO_ARM_MIN_LIFT_PX:
+                state.motion_state = "idle"
+                state.armed_zone_id = None
+                state.lift_start_y = None
+                state.lift_start_relative_y = None
+                state.peak_y = None
+                state.peak_relative_y = None
+                state.max_down_velocity = 0.0
+                state.max_down_relative_velocity = 0.0
+                state.falling_frames = 0
+                return
             if state.motion_state != "falling":
                 state.peak_y = state.peak_y if state.peak_y is not None else finger_y
                 state.peak_relative_y = state.peak_relative_y if state.peak_relative_y is not None else motion_y
+                state.falling_frames = 1
+            else:
+                state.falling_frames += 1
             state.motion_state = "falling"
             state.max_down_velocity = max(state.max_down_velocity, state.smoothed_velocity_y)
             state.max_down_relative_velocity = max(state.max_down_relative_velocity, motion_velocity)
             return
-        if state.motion_state not in {"raised", "falling"}:
+        if state.motion_state not in {"lifting", "raised", "falling"}:
             state.motion_state = "idle"
             state.armed_zone_id = None
+            state.lift_start_y = None
+            state.lift_start_relative_y = None
+            state.release_ready_frames = 0
+            state.falling_frames = 0
             state.peak_y = None
             state.peak_relative_y = None
             state.max_down_velocity = 0.0

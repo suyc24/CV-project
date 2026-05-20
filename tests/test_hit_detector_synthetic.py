@@ -73,6 +73,52 @@ def test_upper_key_landing_can_trigger():
     assert len(hits) == 1
 
 
+def test_pressed_finger_jitter_does_not_retrigger():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    zone = zones[0]
+    detector = HitDetector()
+    x = zone.center[0]
+    y_start = zone.y1 + 5
+    y_hit = int(zone.y1 + zone.height * 0.78)
+    detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0)
+    hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.05)
+    assert len(hits) == 1
+
+    jitter_positions = [y_hit - 8, y_hit + 5, y_hit - 6, y_hit + 6, y_hit - 7, y_hit + 4]
+    for idx, y in enumerate(jitter_positions, start=1):
+        hits = detector.update([hand_with_finger(0, 8, x, y)], zones, 100.05 + idx * 0.05)
+        assert not hits, f"stationary jitter retriggered at y={y}"
+
+
+def test_short_lift_before_drop_does_not_trigger():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    zone = zones[0]
+    detector = HitDetector()
+    x = zone.center[0]
+    y_rest = int(zone.y1 + zone.height * 0.78)
+    detector.update([hand_with_finger(0, 8, x, y_rest)], zones, 100.0)
+    detector.update([hand_with_finger(0, 8, x, y_rest - 10)], zones, 100.05)
+    hits = detector.update([hand_with_finger(0, 8, x, y_rest + 4)], zones, 100.10)
+    assert not hits
+
+
+def test_clear_lift_allows_retrigger():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    zone = zones[0]
+    detector = HitDetector()
+    x = zone.center[0]
+    y_start = zone.y1 + 5
+    y_hit = int(zone.y1 + zone.height * 0.78)
+    y_lifted = y_hit - 24
+    detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0)
+    hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.05)
+    assert len(hits) == 1
+    detector.update([hand_with_finger(0, 8, x, y_lifted)], zones, 100.25)
+    detector.update([hand_with_finger(0, 8, x, y_lifted)], zones, 100.30)
+    hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.38)
+    assert len(hits) == 1
+
+
 def test_perspective_key_mapping_uses_landing_x():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     detector = HitDetector()
@@ -93,5 +139,8 @@ if __name__ == "__main__":
     test_short_drop_does_not_trigger()
     test_default_trigger_fingers_include_thumb()
     test_upper_key_landing_can_trigger()
+    test_pressed_finger_jitter_does_not_retrigger()
+    test_short_lift_before_drop_does_not_trigger()
+    test_clear_lift_allows_retrigger()
     test_perspective_key_mapping_uses_landing_x()
     print("synthetic hit detector tests passed")

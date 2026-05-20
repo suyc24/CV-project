@@ -81,6 +81,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tracking-max-width", type=int, default=config.TRACKING_MAX_WIDTH, help="Max width passed to MediaPipe")
     parser.add_argument("--no-landmark-smoothing", action="store_true", help="Disable landmark temporal smoothing")
     parser.add_argument("--landmark-smoothing-alpha", type=float, default=config.LANDMARK_SMOOTHING_ALPHA, help="Landmark smoothing alpha")
+    parser.add_argument("--no-optical-stabilization", action="store_true", help="Disable optical-flow fingertip stabilization")
     parser.add_argument("--max-hands", type=int, default=2, help="Maximum number of hands to track")
     parser.add_argument("--no-hand-cutout", action="store_true", help="Do not composite the real hand above the piano layer")
     parser.add_argument("--no-fingertip-markers", action="store_true", help="Hide fingertip marker dots")
@@ -88,6 +89,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-trigger-thumb", action="store_true", help="Disable thumb note triggers for unstable camera angles")
     parser.add_argument("--min-detection-confidence", type=float, default=0.55, help="MediaPipe hand detection confidence")
     parser.add_argument("--min-tracking-confidence", type=float, default=0.55, help="MediaPipe hand tracking confidence")
+    parser.add_argument(
+        "--piano-sensitivity",
+        choices=["stable", "balanced", "sensitive"],
+        default="stable",
+        help="Piano hit tuning preset. stable reduces jitter triggers; sensitive accepts softer taps.",
+    )
     parser.add_argument(
         "--calibration-exposures",
         default=",".join(str(value) for value in config.CALIBRATION_EXPOSURES),
@@ -142,6 +149,7 @@ def open_camera(camera_index: int, settings: CameraSettings, warmup_frames: int 
 
 def main() -> int:
     args = parse_args()
+    apply_runtime_tracking_config(args)
     camera_settings = build_camera_settings(args)
     try:
         instrument_roi = parse_roi(args.instrument_roi)
@@ -407,6 +415,24 @@ def apply_quality_preset(settings: CameraSettings, preset: str) -> None:
         settings.width, settings.height, settings.fps = 1920, 1080, 30
     elif preset == "max":
         settings.width, settings.height, settings.fps = 1920, 1080, 60
+
+
+def apply_runtime_tracking_config(args: argparse.Namespace) -> None:
+    if args.no_optical_stabilization:
+        config.FINGERTIP_OPTICAL_FLOW_STABILIZATION = False
+
+    if args.piano_sensitivity == "sensitive":
+        config.PIANO_STRIKE_MIN_DROP_PX = 14.0
+        config.PIANO_STRIKE_MIN_VELOCITY = 90.0
+        config.PIANO_STRIKE_MIN_NET_DROP_PX = 10.0
+        config.PIANO_RELEASE_MIN_UP_VELOCITY = 10.0
+        config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER = 1.25
+    elif args.piano_sensitivity == "balanced":
+        config.PIANO_STRIKE_MIN_DROP_PX = 16.0
+        config.PIANO_STRIKE_MIN_VELOCITY = 100.0
+        config.PIANO_STRIKE_MIN_NET_DROP_PX = 12.0
+        config.PIANO_RELEASE_MIN_UP_VELOCITY = 14.0
+        config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER = 1.4
 
 
 def print_camera_settings(label: str, settings: CameraSettings) -> None:

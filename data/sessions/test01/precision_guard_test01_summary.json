@@ -1,0 +1,52 @@
+{
+  "frames": 532,
+  "online_hits": 182,
+  "replay_hits": 58,
+  "reason_counts": {
+    "armed": 758,
+    "not_armed": 378,
+    "short_drop": 68,
+    "suppressed_by_finger": 27,
+    "hit": 58,
+    "pressed": 1554,
+    "velocity": 34,
+    "lifting": 215,
+    "short_lift": 35,
+    "lifted": 8,
+    "jitter_guard": 57,
+    "no_zone": 43
+  },
+  "config": {
+    "PIANO_HIT_VELOCITY_THRESHOLD": 150.0,
+    "PIANO_CROSSING_VELOCITY_THRESHOLD": 55.0,
+    "HIT_VELOCITY_THRESHOLD": 850.0,
+    "PIANO_PRESS_RATIO": 0.35,
+    "PIANO_RELEASE_RATIO": 0.3,
+    "PIANO_ARM_RATIO": 0.28,
+    "PIANO_ARM_MIN_LIFT_PX": 18.0,
+    "PIANO_RELEASE_STABLE_FRAMES": 2,
+    "PIANO_MIN_FALL_FRAMES": 1,
+    "PIANO_LIFT_VELOCITY_THRESHOLD": 45.0,
+    "PIANO_FALLING_VELOCITY_THRESHOLD": 45.0,
+    "PIANO_STRIKE_MIN_DROP_PX": 18.0,
+    "PIANO_STRIKE_MIN_VELOCITY": 110.0,
+    "PIANO_RELEASE_LIFT_PX": 14.0,
+    "PIANO_RELEASE_MIN_UP_VELOCITY": 18.0,
+    "PIANO_RELEASE_STRONG_LIFT_MULTIPLIER": 1.55,
+    "PIANO_JITTER_GUARD_ENABLED": true,
+    "PIANO_STRIKE_MIN_NET_DROP_PX": 15.0,
+    "PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX": 64.0,
+    "PIANO_USE_RELATIVE_FINGER_MOTION": true,
+    "PIANO_MAX_HITS_PER_HAND_PER_FRAME": 1,
+    "TRIGGER_FINGER_IDS": [
+      4,
+      8,
+      12,
+      16,
+      20
+    ],
+    "PIANO_HIT_X_MARGIN_RATIO": 0.06,
+    "PIANO_HIT_TOP_MARGIN_RATIO": 0.28,
+    "PIANO_HIT_BOTTOM_MARGIN_RATIO": 0.18
+  }
+}

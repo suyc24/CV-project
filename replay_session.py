@@ -20,6 +20,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--piano-strike-velocity", type=float, default=None)
     parser.add_argument("--piano-strike-drop", type=float, default=None)
     parser.add_argument("--piano-release-lift", type=float, default=None)
+    parser.add_argument("--piano-arm-lift", type=float, default=None)
+    parser.add_argument("--piano-release-stable-frames", type=int, default=None)
     parser.add_argument("--piano-arm-ratio", type=float, default=None)
     parser.add_argument("--drum-velocity-threshold", type=float, default=None)
     parser.add_argument("--piano-press-ratio", type=float, default=None)
@@ -72,11 +74,19 @@ def main() -> int:
             "PIANO_PRESS_RATIO": config.PIANO_PRESS_RATIO,
             "PIANO_RELEASE_RATIO": config.PIANO_RELEASE_RATIO,
             "PIANO_ARM_RATIO": config.PIANO_ARM_RATIO,
+            "PIANO_ARM_MIN_LIFT_PX": config.PIANO_ARM_MIN_LIFT_PX,
+            "PIANO_RELEASE_STABLE_FRAMES": config.PIANO_RELEASE_STABLE_FRAMES,
+            "PIANO_MIN_FALL_FRAMES": config.PIANO_MIN_FALL_FRAMES,
             "PIANO_LIFT_VELOCITY_THRESHOLD": config.PIANO_LIFT_VELOCITY_THRESHOLD,
             "PIANO_FALLING_VELOCITY_THRESHOLD": config.PIANO_FALLING_VELOCITY_THRESHOLD,
             "PIANO_STRIKE_MIN_DROP_PX": config.PIANO_STRIKE_MIN_DROP_PX,
             "PIANO_STRIKE_MIN_VELOCITY": config.PIANO_STRIKE_MIN_VELOCITY,
             "PIANO_RELEASE_LIFT_PX": config.PIANO_RELEASE_LIFT_PX,
+            "PIANO_RELEASE_MIN_UP_VELOCITY": config.PIANO_RELEASE_MIN_UP_VELOCITY,
+            "PIANO_RELEASE_STRONG_LIFT_MULTIPLIER": config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER,
+            "PIANO_JITTER_GUARD_ENABLED": config.PIANO_JITTER_GUARD_ENABLED,
+            "PIANO_STRIKE_MIN_NET_DROP_PX": config.PIANO_STRIKE_MIN_NET_DROP_PX,
+            "PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX": config.PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX,
             "PIANO_USE_RELATIVE_FINGER_MOTION": config.PIANO_USE_RELATIVE_FINGER_MOTION,
             "PIANO_MAX_HITS_PER_HAND_PER_FRAME": config.PIANO_MAX_HITS_PER_HAND_PER_FRAME,
             "TRIGGER_FINGER_IDS": config.TRIGGER_FINGER_IDS,
@@ -103,6 +113,10 @@ def apply_overrides(args: argparse.Namespace) -> None:
         config.PIANO_STRIKE_MIN_DROP_PX = args.piano_strike_drop
     if args.piano_release_lift is not None:
         config.PIANO_RELEASE_LIFT_PX = args.piano_release_lift
+    if args.piano_arm_lift is not None:
+        config.PIANO_ARM_MIN_LIFT_PX = args.piano_arm_lift
+    if args.piano_release_stable_frames is not None:
+        config.PIANO_RELEASE_STABLE_FRAMES = args.piano_release_stable_frames
     if args.piano_arm_ratio is not None:
         config.PIANO_ARM_RATIO = args.piano_arm_ratio
     if args.drum_velocity_threshold is not None:

@@ -88,6 +88,8 @@ python main.py --camera 0 --mode piano
 - `--tracking-max-width 416`：送入 MediaPipe 的最大图像宽度，越小越快但细节更少。
 - `--no-tracking-roi`：关闭桌面附近 ROI 追踪，改为整帧追踪。
 - `--landmark-smoothing-alpha 0.72`：landmark 时序平滑系数。越小越稳但越慢，越大越灵敏但越抖。
+- `--no-optical-stabilization`：关闭指尖光流稳定层。默认开启，用来抑制 MediaPipe 单帧跳点。
+- `--piano-sensitivity stable|balanced|sensitive`：钢琴触发预设。默认 `stable` 更抗抖，`sensitive` 更容易触发轻敲。
 - `--max-hands 2`：最多追踪几只手。
 - `--no-hand-cutout`：不把真实手部抠回到钢琴图层上方，可换取更高 FPS。
 - `--no-fingertip-markers`：隐藏指尖圆点。
@@ -190,6 +192,13 @@ python main.py --camera 0 --backend dshow --mode piano --no-hand-cutout
 python main.py --camera 0 --backend dshow --mode piano --landmark-smoothing-alpha 0.55
 ```
 
+如果手停在键盘上不动仍然误触发，保持默认 `--piano-sensitivity stable`，并确认没有加 `--no-optical-stabilization`。如果稳定后轻敲变得不够灵敏，再试：
+
+```bash
+python main.py --camera 0 --backend dshow --mode piano --piano-sensitivity balanced
+python main.py --camera 0 --backend dshow --mode piano --piano-sensitivity sensitive
+```
+
 如果内置摄像头照不到桌面，可以先用空中测试模式验证软件链路：
 
 ```bash
@@ -256,6 +265,15 @@ python analysis_report.py data/sessions/test01
 
 报告会输出 `report.html`，并额外生成 `frame_metrics.csv`。把一个 session 目录发给协作者后，就可以不用重新连接你的摄像头，直接离线调参和验证。
 
+重新导出当前 session 的截图：
+
+```bash
+python extract_session_frames.py data/sessions/test01 --count 5 --include-hit-frames
+python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-frames
+```
+
+这会重建 `extracted_frames/`。默认会在截图上叠加当前 `frames.jsonl` 里的琴键 polygon、指尖和 hit 标记。如果只想看原始摄像头画面，加 `--no-overlay`。
+
 钢琴触发灵敏度：
 
 - Piano 模式使用单独的触键状态机参数，主要包括 `PIANO_STRIKE_MIN_VELOCITY`、`PIANO_STRIKE_MIN_DROP_PX` 和 `PIANO_RELEASE_LIFT_PX`。
@@ -263,9 +281,10 @@ python analysis_report.py data/sessions/test01
 - 拇指默认也能触发琴键。如果某个摄像头角度下拇指 landmark 抖动误触，可以加 `--no-trigger-thumb` 临时关闭。
 - Piano 不再要求指尖落到某条 contact line 以下；只要一次有效下落的落点位于琴键区域内，就可以触发。
 - Piano 可视琴键默认覆盖整个底部演奏面。实际命中区域只比可视琴键略大，用来容忍边界误差。
-- Piano 使用 `raised -> falling -> pressed` 状态机，更接近真实钢琴的“抬起、下落、触键”动作。
+- Piano 使用 `lifting -> raised -> falling -> pressed` 状态机，更接近真实钢琴的“抬起、下落、触键”动作。
+- `lifting` 必须累计至少 `PIANO_ARM_MIN_LIFT_PX` 的抬起幅度才会进入可触发状态；`pressed` 后也要连续 `PIANO_RELEASE_STABLE_FRAMES` 帧满足抬起距离才会 release。这样可以过滤 MediaPipe 在手指贴近镜头或停在键盘上时的轻微抖动。
 - 如果还是触发困难，可以继续降低 `config.py` 中的 `PIANO_STRIKE_MIN_VELOCITY`，例如从 `110` 调到 `90`，或把 `PIANO_STRIKE_MIN_DROP_PX` 从 `18` 调到 `14`。
-- 如果误触发较多，调高 `PIANO_STRIKE_MIN_VELOCITY`，或增大 `PIANO_STRIKE_MIN_DROP_PX` / `PIANO_RELEASE_LIFT_PX`。
+- 如果误触发较多，优先增大 `PIANO_ARM_MIN_LIFT_PX` 或 `PIANO_RELEASE_STABLE_FRAMES`；其次再调高 `PIANO_STRIKE_MIN_VELOCITY`，或增大 `PIANO_STRIKE_MIN_DROP_PX` / `PIANO_RELEASE_LIFT_PX`。
 
 手势控制：
 
@@ -293,6 +312,8 @@ python analysis_report.py data/sessions/test01
 ### Hand Tracking
 
 `hand_tracker.py` 使用 MediaPipe Hands 获取每只手的 21 个 landmarks，并把归一化坐标转换为像素坐标。UI 默认不绘制骨架线，而是用 landmarks 估计手部区域，把真实摄像头里的手抠回到钢琴图层上方，并用小圆点标出 10 个指尖。
+
+为了减少指尖靠近镜头时的跳点，当前版本会先做稳定 hand id 分配，再对指尖和指根等关键点使用 OpenCV Lucas-Kanade 光流进行时序稳定：MediaPipe 给出粗位置，光流提供相邻帧连续运动估计；当二者差异过大时，系统会降低单帧 MediaPipe 点的权重。
 
 为了提高实时性，当前版本默认只把画面下方桌面附近 ROI 送入 MediaPipe，并把输入宽度限制到 `TRACKING_MAX_WIDTH`。检测结果会映射回原始画面坐标。landmarks 还会经过轻量时序平滑，减少指尖抖动。
 
@@ -328,6 +349,7 @@ python analysis_report.py data/sessions/test01
 - `strike_velocity`：下落距离够，但敲击速度不够。
 - `pressed`：还没有明显抬起，不能重复触发。
 - `cooldown`：距离上次触发太近。
+- `jitter_guard`：单帧跳点或净下落证据不足，本次候选触发被防抖层拦截。
 - `hit`：本帧触发成功。
 
 核心速度计算：
@@ -339,7 +361,8 @@ velocity_y = (current_y - previous_y) / dt
 图像坐标中 y 向下增大，所以向下敲击时 `velocity_y` 为正。Piano 模式还会计算“指尖相对本手指根部关节”的 y 位移和速度，避免整只手或拇指 landmark 抖动被误判成食指敲击。系统使用指数平滑降低抖动，并为每个触发指尖维护一个小状态机：
 
 - `idle`：指尖不在当前键附近。
-- `raised/armed`：指尖在键面上方，或出现了向上抬起动作。
+- `lifting`：指尖正在上抬，但累计抬起幅度还不够，暂时不能触发。
+- `raised/armed`：指尖在键面上方，或已经完成足够明确的抬起动作。
 - `falling`：指尖开始向下运动，并记录这次下落的最高点和最大下落速度。
 - `pressed`：指尖完成有效下落并触发音符，随后需要明显抬起才会再次触发。
 

@@ -1,0 +1,90 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=0.68in]{geometry}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{titlesec}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{0.5em}{}
+\titlespacing*{\section}{0pt}{0.45em}{0.25em}
+\setlist[itemize]{leftmargin=1.25em,itemsep=0.12em,topsep=0.2em}
+\setlist[enumerate]{leftmargin=1.35em,itemsep=0.12em,topsep=0.2em}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.28em}
+
+\title{\vspace{-1.2em}\textbf{AirDesk Instrument: Webcam-Based Spatial Vision for a Desktop Virtual Instrument}}
+\author{Option 2: Open-Ended Computer Vision Project \\ Team size: 1 student}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.7em}
+
+\section{Problem Statement}
+Touchscreen music applications are constrained by the physical size of the phone or tablet, while full electronic instruments require dedicated hardware. This project asks whether an ordinary laptop webcam and an empty desk can become a responsive virtual instrument. The proposed system, \textit{AirDesk Instrument}, will track the user's hands in the camera view, infer finger strikes on a real tabletop plane, and trigger drum or piano sounds when fingertips land inside virtual keys or pads.
+
+The core computer vision problem is not only hand detection, but robust \textit{contact intent recognition} from monocular video: a fingertip may hover above the desk, slide across a key, rotate with the hand, or disappear briefly under motion blur. The system must distinguish intentional downward strikes from incidental motion, map each strike to a projected instrument zone, and do so with low enough latency for musical interaction. The project is interesting because it combines real-time hand pose estimation, perspective geometry, temporal motion analysis, and human-computer interaction into a tangible AR-style application using commodity hardware.
+
+\section{Related Work}
+MediaPipe provides real-time perception pipelines and has demonstrated efficient on-device hand landmark tracking with 21 3D hand keypoints per hand \cite{lugaresi2019mediapipe,zhang2020mediapipehands}. These works make webcam-based hand interaction feasible without training a new model from scratch. Interactive tabletop systems such as PlayAnywhere use projection-vision techniques to turn ordinary surfaces into interactive displays \cite{wilson2005playanywhere}. OmniTouch similarly explores interaction on arbitrary physical surfaces, showing the value of moving input beyond fixed screens \cite{harrison2011omnitouch}. AirDesk differs by focusing on a low-cost monocular webcam setting and on time-critical musical strike detection rather than general surface pointing.
+
+\section{Methodology}
+The pipeline will be implemented in Python with OpenCV, MediaPipe, and a lightweight audio engine.
+
+\textbf{1. Camera input and desk-plane representation.} OpenCV will capture frames from a standard webcam. A virtual instrument plane will be defined as a quadrilateral region near the tabletop. Piano keys or drum pads will be projected into this plane, so hit testing and rendering use the same perspective geometry. Optional camera exposure and resolution calibration will be used to improve landmark stability under classroom lighting.
+
+\textbf{2. Hand landmark tracking and smoothing.} MediaPipe Hands will provide 21 landmarks for up to two hands. Fingertips will be tracked for the thumb, index, middle, ring, and pinky. To reduce jitter while preserving strike timing, landmark positions and velocities will be temporally smoothed. In addition to absolute image coordinates, each fingertip's vertical motion will be measured relative to its corresponding base joint, making the detector less sensitive to whole-hand translation and wrist rotation.
+
+\textbf{3. Strike detection.} Each finger will maintain a finite-state motion model with states such as \texttt{idle}, \texttt{armed}, \texttt{falling}, and \texttt{pressed}. A valid note event requires a lifted/armed phase, sufficient downward velocity, minimum drop distance, a landing point inside a virtual zone polygon, and a short cooldown/release condition before retriggering. This design should reject hover noise and accidental repeated triggers better than a single threshold on fingertip position.
+
+\textbf{4. Zone mapping and sound control.} For piano mode, projected white and black key polygons will cover a two-octave region. For drum mode, projected pads will map to kick, snare, hi-hat, toms, and crash. The estimated strike velocity will be converted into note volume, enabling velocity-sensitive playing. A secondary gesture recognizer will support simple loop-station commands such as record, play/pause, and clear, so the demo can be controlled without keyboard input.
+
+\section{Evaluation Plan}
+The system will be evaluated with both quantitative metrics and qualitative playability tests.
+
+\textbf{Quantitative metrics.}
+\begin{itemize}
+    \item \textbf{Hit precision and recall:} record webcam sessions with intended taps manually annotated by frame/time and target note. Measure true positives, false positives, and missed intended hits.
+    \item \textbf{Note mapping accuracy:} among detected hits, measure the fraction whose predicted key/pad matches the annotated target.
+    \item \textbf{Latency and throughput:} report end-to-end delay from visual contact to audio trigger when measurable, plus average processing FPS at 720p and 1080p.
+    \item \textbf{Robustness:} compare performance under different lighting, single-hand versus two-hand use, piano versus drum mode, and with/without thumb triggering.
+\end{itemize}
+
+\textbf{Qualitative criteria.} A successful final demo should feel playable: strikes should sound when the finger physically reaches the desk, repeated notes should not double-trigger uncontrollably, nearby keys should be distinguishable, and the virtual keyboard or drum pads should appear visually attached to the tabletop rather than floating as a screen overlay.
+
+\section{Timeline and Milestones}
+\begin{enumerate}
+    \item \textbf{May 18--May 24: Baseline pipeline.} Implement webcam capture, MediaPipe hand tracking, projected instrument zones, and basic audio triggering. Deliverable: live demo with one-hand drum or piano taps.
+    \item \textbf{May 25--May 31: Robust strike detector.} Add temporal smoothing, relative fingertip motion, per-finger state machines, cooldown/release logic, and velocity-to-volume mapping. Deliverable: replayable session logs and synthetic/unit tests for hit detection.
+    \item \textbf{June 1--June 7: Perspective UI and interaction.} Align rendered keys/pads with the desk plane, support two hands and ten fingertips, and add loop-station gestures. Deliverable: usable piano and drum modes with visual feedback.
+    \item \textbf{June 8--June 14: Data collection and evaluation.} Record test sessions, annotate intended hits, compute precision/recall, note accuracy, FPS, and latency estimates. Deliverable: evaluation tables and failure-case analysis.
+    \item \textbf{June 15--June 21: Final polish and report.} Optimize runtime, prepare final demo video, clean the code repository, and write the final report. Deliverable: submitted code, data/logs, demo, and final report.
+\end{enumerate}
+
+\section{Expected Deliverables}
+The final submission will include the source code, installation instructions, recorded test sessions or lightweight logs, quantitative evaluation scripts, a short demo video, and a final report discussing design choices, results, limitations, and future improvements. No VLM API or rented GPU budget is required; the project is designed to run on a normal laptop with a webcam.
+
+\begin{thebibliography}{4}
+\small
+\bibitem{lugaresi2019mediapipe}
+C. Lugaresi, J. Tang, H. Nash, C. McClanahan, E. Uboweja, M. Hays, F. Zhang, C. Chang, M. Yong, J. Lee, W. Chang, W. Hua, M. Georg, and M. Grundmann.
+\newblock MediaPipe: A framework for building perception pipelines.
+\newblock \textit{arXiv preprint arXiv:1906.08172}, 2019.
+
+\bibitem{zhang2020mediapipehands}
+F. Zhang, V. Bazarevsky, A. Vakunov, A. Tkachenka, G. Sung, C. Chang, and M. Grundmann.
+\newblock MediaPipe Hands: On-device real-time hand tracking.
+\newblock \textit{arXiv preprint arXiv:2006.10214}, 2020.
+
+\bibitem{wilson2005playanywhere}
+A. D. Wilson.
+\newblock PlayAnywhere: A compact interactive tabletop projection-vision system.
+\newblock In \textit{Proceedings of UIST}, 2005.
+
+\bibitem{harrison2011omnitouch}
+C. Harrison, H. Benko, and A. D. Wilson.
+\newblock OmniTouch: Wearable multitouch interaction everywhere.
+\newblock In \textit{Proceedings of UIST}, 2011.
+\end{thebibliography}
+
+\end{document}

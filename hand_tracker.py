@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from importlib import import_module
+import math
 from pathlib import Path
 import time
 from typing import Dict, List, Optional, Tuple
 from urllib.request import urlretrieve
 
 import cv2
+import numpy as np
 
 import config
 
@@ -49,6 +51,10 @@ class HandTracker:
         self._smooth_landmarks = smooth_landmarks
         self._smoothing_alpha = smoothing_alpha
         self._smoothed_points: Dict[Tuple[int, int], Tuple[float, float, float]] = {}
+        self._tracked_hand_centers: Dict[int, Tuple[float, float, str]] = {}
+        self._next_stable_hand_id = 0
+        self._last_gray = None
+        self._flow_points: Dict[Tuple[int, int], Tuple[float, float]] = {}
 
         try:
             self._init_legacy_hands(
@@ -148,8 +154,13 @@ class HandTracker:
             hands = self._process_legacy(prepared_frame, offset, scale)
         if not hands:
             self._smoothed_points.clear()
+            self._tracked_hand_centers.clear()
+            self._flow_points.clear()
+            self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
             return hands
-        return self._smooth(hands)
+        hands = self._assign_stable_hand_ids(hands)
+        hands = self._smooth(hands)
+        return self._stabilize_with_optical_flow(frame_bgr, hands)
 
     def _process_legacy(
         self,
@@ -281,6 +292,192 @@ class HandTracker:
             if key not in next_keys:
                 del self._smoothed_points[key]
         return smoothed_hands
+
+    def _assign_stable_hand_ids(self, hands: List[HandLandmarks]) -> List[HandLandmarks]:
+        if not hands:
+            return hands
+
+        previous = dict(self._tracked_hand_centers)
+        used_previous: set[int] = set()
+        assigned: List[HandLandmarks] = []
+        next_centers: Dict[int, Tuple[float, float, str]] = {}
+
+        for detected in hands:
+            center = self._hand_center(detected.landmarks)
+            scale = self._hand_scale(detected.landmarks)
+            best_id: Optional[int] = None
+            best_distance = float("inf")
+            max_distance = max(float(config.STABLE_HAND_ID_MAX_DISTANCE_PX), scale * 0.75)
+            for stable_id, (px, py, label) in previous.items():
+                if stable_id in used_previous:
+                    continue
+                label_matches = label == detected.label or "Unknown" in {label, detected.label}
+                if not label_matches:
+                    continue
+                distance = math.hypot(center[0] - px, center[1] - py)
+                if distance < best_distance and distance <= max_distance:
+                    best_distance = distance
+                    best_id = stable_id
+
+            if best_id is None:
+                best_id = self._next_stable_hand_id
+                self._next_stable_hand_id += 1
+            used_previous.add(best_id)
+            next_centers[best_id] = (center[0], center[1], detected.label)
+            assigned.append(
+                HandLandmarks(
+                    hand_id=best_id,
+                    label=detected.label,
+                    landmarks=detected.landmarks,
+                    normalized_landmarks=detected.normalized_landmarks,
+                )
+            )
+
+        self._tracked_hand_centers = next_centers
+        return assigned
+
+    def _stabilize_with_optical_flow(self, frame_bgr, hands: List[HandLandmarks]) -> List[HandLandmarks]:
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        if not config.FINGERTIP_OPTICAL_FLOW_STABILIZATION:
+            self._last_gray = gray
+            self._flow_points = self._current_flow_points(hands)
+            return hands
+
+        if self._last_gray is None or not self._flow_points:
+            self._last_gray = gray
+            self._flow_points = self._current_flow_points(hands)
+            return hands
+
+        optical_predictions = self._optical_flow_predictions(gray, hands)
+        next_flow_points: Dict[Tuple[int, int], Tuple[float, float]] = {}
+        stabilized_hands: List[HandLandmarks] = []
+
+        for hand in hands:
+            scale = self._hand_scale(hand.landmarks)
+            outlier_distance = config.OPTICAL_FLOW_OUTLIER_DISTANCE_PX + scale * 0.035
+            max_step = config.OPTICAL_FLOW_MAX_POINT_STEP_PX + scale * 0.04
+            stabilized_landmarks = []
+            for idx, (x, y, z) in enumerate(hand.landmarks):
+                key = (hand.hand_id, idx)
+                current = (float(x), float(y))
+                previous = self._flow_points.get(key)
+                prediction = optical_predictions.get(key)
+
+                if idx in config.OPTICAL_FLOW_LANDMARK_IDS and prediction is not None:
+                    distance_to_model = math.hypot(current[0] - prediction[0], current[1] - prediction[1])
+                    raw_weight = (
+                        config.OPTICAL_FLOW_OUTLIER_RAW_WEIGHT
+                        if distance_to_model > outlier_distance
+                        else config.OPTICAL_FLOW_RAW_WEIGHT
+                    )
+                    sx = raw_weight * current[0] + (1.0 - raw_weight) * prediction[0]
+                    sy = raw_weight * current[1] + (1.0 - raw_weight) * prediction[1]
+                elif idx in config.OPTICAL_FLOW_LANDMARK_IDS and previous is not None:
+                    sx, sy = self._limit_point_step(previous, current, max_step)
+                else:
+                    sx, sy = current
+
+                if previous is not None and idx in config.OPTICAL_FLOW_LANDMARK_IDS:
+                    sx, sy = self._limit_point_step(previous, (sx, sy), max_step)
+                next_flow_points[key] = (sx, sy)
+                stabilized_landmarks.append((int(round(sx)), int(round(sy)), z))
+
+            stabilized_hands.append(
+                HandLandmarks(
+                    hand_id=hand.hand_id,
+                    label=hand.label,
+                    landmarks=stabilized_landmarks,
+                    normalized_landmarks=hand.normalized_landmarks,
+                )
+            )
+
+        self._last_gray = gray
+        self._flow_points = next_flow_points
+        return stabilized_hands
+
+    def _optical_flow_predictions(
+        self,
+        gray,
+        hands: List[HandLandmarks],
+    ) -> Dict[Tuple[int, int], Tuple[float, float]]:
+        keys = []
+        points = []
+        current_keys = {
+            (hand.hand_id, idx)
+            for hand in hands
+            for idx, _ in enumerate(hand.landmarks)
+            if idx in config.OPTICAL_FLOW_LANDMARK_IDS
+        }
+        for key, point in self._flow_points.items():
+            if key in current_keys:
+                keys.append(key)
+                points.append(point)
+        if not points:
+            return {}
+
+        previous_points = np.array(points, dtype=np.float32).reshape(-1, 1, 2)
+        next_points, status, errors = cv2.calcOpticalFlowPyrLK(
+            self._last_gray,
+            gray,
+            previous_points,
+            None,
+            winSize=(config.OPTICAL_FLOW_WINDOW_SIZE, config.OPTICAL_FLOW_WINDOW_SIZE),
+            maxLevel=config.OPTICAL_FLOW_MAX_LEVEL,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 16, 0.03),
+        )
+        if next_points is None or status is None:
+            return {}
+
+        height, width = gray.shape[:2]
+        predictions: Dict[Tuple[int, int], Tuple[float, float]] = {}
+        flat_status = status.reshape(-1)
+        flat_errors = errors.reshape(-1) if errors is not None else np.zeros(len(keys), dtype=np.float32)
+        for idx, key in enumerate(keys):
+            if not flat_status[idx]:
+                continue
+            error = float(flat_errors[idx])
+            if error > config.OPTICAL_FLOW_MAX_ERROR:
+                continue
+            x, y = next_points[idx, 0]
+            if 0 <= x < width and 0 <= y < height:
+                predictions[key] = (float(x), float(y))
+        return predictions
+
+    def _current_flow_points(self, hands: List[HandLandmarks]) -> Dict[Tuple[int, int], Tuple[float, float]]:
+        points: Dict[Tuple[int, int], Tuple[float, float]] = {}
+        for hand in hands:
+            for idx, (x, y, _) in enumerate(hand.landmarks):
+                if idx in config.OPTICAL_FLOW_LANDMARK_IDS:
+                    points[(hand.hand_id, idx)] = (float(x), float(y))
+        return points
+
+    def _limit_point_step(
+        self,
+        previous: Tuple[float, float],
+        current: Tuple[float, float],
+        max_step: float,
+    ) -> Tuple[float, float]:
+        dx = current[0] - previous[0]
+        dy = current[1] - previous[1]
+        distance = math.hypot(dx, dy)
+        if distance <= max_step or distance <= 1e-6:
+            return current
+        ratio = max_step / distance
+        return (previous[0] + dx * ratio, previous[1] + dy * ratio)
+
+    def _hand_center(self, landmarks: List[Tuple[int, int, float]]) -> Tuple[float, float]:
+        if not landmarks:
+            return (0.0, 0.0)
+        xs = [point[0] for point in landmarks]
+        ys = [point[1] for point in landmarks]
+        return (sum(xs) / len(xs), sum(ys) / len(ys))
+
+    def _hand_scale(self, landmarks: List[Tuple[int, int, float]]) -> float:
+        if not landmarks:
+            return 1.0
+        xs = [point[0] for point in landmarks]
+        ys = [point[1] for point in landmarks]
+        return max(1.0, math.hypot(max(xs) - min(xs), max(ys) - min(ys)))
 
     def close(self) -> None:
         if self._hands is not None:
