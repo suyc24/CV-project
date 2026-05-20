@@ -215,7 +215,10 @@ class DepthContactEstimator:
     def _aligned_depth(self, frame: RGBDFrame) -> Optional[np.ndarray]:
         if frame.depth is None:
             return None
-        depth = frame.depth.astype(np.float32)
+        depth = self._as_image_array(frame.depth)
+        if depth is None:
+            return None
+        depth = depth.astype(np.float32)
         height, width = frame.color_bgr.shape[:2]
         if depth.shape[:2] != (height, width):
             depth = cv2.resize(depth, (width, height), interpolation=cv2.INTER_NEAREST)
@@ -226,13 +229,29 @@ class DepthContactEstimator:
     def _aligned_confidence(self, frame: RGBDFrame, shape: Optional[Tuple[int, int]]) -> Optional[np.ndarray]:
         if frame.confidence is None or shape is None:
             return None
-        confidence = frame.confidence.astype(np.float32)
+        confidence = self._as_image_array(frame.confidence)
+        if confidence is None:
+            return None
+        confidence = confidence.astype(np.float32)
         if confidence.shape[:2] != shape:
             confidence = cv2.resize(confidence, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
         max_value = float(np.nanmax(confidence)) if confidence.size else 0.0
         if max_value > 1.0:
             confidence = confidence / max_value
         return confidence
+
+    def _as_image_array(self, value) -> Optional[np.ndarray]:
+        array = np.asarray(value)
+        if array.size == 0 or array.ndim < 2:
+            return None
+        array = np.squeeze(array)
+        if array.size == 0 or array.ndim < 2:
+            return None
+        if array.ndim > 2:
+            array = array[:, :, 0]
+        if array.shape[0] <= 0 or array.shape[1] <= 0:
+            return None
+        return np.ascontiguousarray(array)
 
     def _local_depth(self, depth: np.ndarray, x: int, y: int) -> Optional[float]:
         height, width = depth.shape[:2]
