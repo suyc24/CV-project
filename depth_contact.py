@@ -65,6 +65,13 @@ class DepthContactEstimator:
     def calibrated(self) -> bool:
         return self._baseline_depth_m is not None
 
+    def reset(self) -> None:
+        self._baseline_accumulator.clear()
+        self._baseline_depth_m = None
+        self._baseline_shape = None
+        self._last_observations = {}
+        self._last_status = "Depth: uncalibrated (press d with hands away)"
+
     def status_text(self) -> str:
         if self.mode == "off":
             return "Depth: off"
@@ -146,6 +153,80 @@ class DepthContactEstimator:
 
     def observation_for(self, hand_id: int, finger_id: int) -> Optional[DepthObservation]:
         return self._last_observations.get((hand_id, finger_id))
+
+    def estimate_piano_quad(
+        self,
+        frame_shape: Tuple[int, int, int],
+    ) -> Optional[Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]]]:
+        if self._baseline_depth_m is None:
+            return None
+        height, width = frame_shape[:2]
+        depth = self._baseline_depth_m
+        if depth.shape[:2] != (height, width):
+            depth = cv2.resize(depth, (width, height), interpolation=cv2.INTER_LINEAR)
+
+        roi_y1 = int(height * 0.42)
+        roi_y2 = int(height * 0.98)
+        roi_x1 = int(width * 0.05)
+        roi_x2 = int(width * 0.95)
+        roi = depth[roi_y1:roi_y2, roi_x1:roi_x2]
+        valid = np.isfinite(roi) & (roi > 0)
+        if np.count_nonzero(valid) >= 512:
+            ys, xs = np.where(valid)
+            step = max(1, len(xs) // 5000)
+            xs = xs[::step].astype(np.float32) + roi_x1
+            ys = ys[::step].astype(np.float32) + roi_y1
+            zs = roi[valid][::step].astype(np.float32)
+            angle = self._desk_roll_angle(xs, ys, zs)
+        else:
+            angle = 0.0
+
+        max_roll = np.deg2rad(config.DEPTH_KEYBED_MAX_ROLL_DEGREES)
+        angle = float(np.clip(angle, -max_roll, max_roll))
+        hdir = np.array([np.cos(angle), np.sin(angle)], dtype=np.float32)
+        up = np.array([hdir[1], -hdir[0]], dtype=np.float32)
+        if up[1] > 0:
+            up = -up
+
+        bottom_center = np.array(
+            [width * 0.5, height * (1.0 - config.DEPTH_KEYBED_BOTTOM_MARGIN_RATIO)],
+            dtype=np.float32,
+        )
+        bottom_width = width * config.DEPTH_KEYBED_WIDTH_RATIO
+        keybed_height = height * config.DEPTH_KEYBED_HEIGHT_RATIO
+        top_width = bottom_width * config.DEPTH_KEYBED_TOP_SCALE
+        top_center = bottom_center + up * keybed_height
+
+        bottom_left = bottom_center - hdir * (bottom_width / 2.0)
+        bottom_right = bottom_center + hdir * (bottom_width / 2.0)
+        top_left = top_center - hdir * (top_width / 2.0)
+        top_right = top_center + hdir * (top_width / 2.0)
+        quad = (top_left, top_right, bottom_right, bottom_left)
+        return tuple(self._clamp_point(point, width, height) for point in quad)
+
+    def _desk_roll_angle(self, xs: np.ndarray, ys: np.ndarray, zs: np.ndarray) -> float:
+        if len(xs) < 3:
+            return 0.0
+        design = np.column_stack([xs, ys, np.ones_like(xs)])
+        try:
+            a, b, _ = np.linalg.lstsq(design, zs, rcond=None)[0]
+        except np.linalg.LinAlgError:
+            return 0.0
+        if abs(a) + abs(b) < 1e-6:
+            return 0.0
+        direction = np.array([b, -a], dtype=np.float32)
+        norm = float(np.linalg.norm(direction))
+        if norm < 1e-6:
+            return 0.0
+        direction /= norm
+        if direction[0] < 0:
+            direction = -direction
+        return float(np.arctan2(direction[1], direction[0]))
+
+    def _clamp_point(self, point: np.ndarray, width: int, height: int) -> Tuple[int, int]:
+        x = int(round(float(np.clip(point[0], 0, width - 1))))
+        y = int(round(float(np.clip(point[1], 0, height - 1))))
+        return (x, y)
 
     def _observe_point(
         self,

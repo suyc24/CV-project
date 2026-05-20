@@ -68,6 +68,17 @@ class Record3DCamera:
         self._session.connect(self.device)
         print(f"Record3D: connected to device index {device_index}: {self.device}")
 
+    @property
+    def rotate_degrees(self) -> int:
+        return self._rotate_degrees
+
+    def set_rotation(self, rotate_degrees: int) -> None:
+        self._rotate_degrees = rotate_degrees % 360
+
+    def rotate_clockwise(self) -> int:
+        self._rotate_degrees = (self._rotate_degrees + 90) % 360
+        return self._rotate_degrees
+
     def read(self) -> tuple[bool, Optional[RGBDFrame]]:
         if self._closed:
             return False, None

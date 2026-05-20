@@ -48,6 +48,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--camera", type=int, default=0, help="OpenCV camera index")
     parser.add_argument("--mode", choices=["drum", "piano"], default="drum", help="Instrument mode")
     parser.add_argument("--debug", action="store_true", help="Show velocity and state debug overlays")
+    parser.add_argument("--display-scale", type=float, default=config.DISPLAY_SCALE, help="Scale factor for the OpenCV display window")
+    parser.add_argument("--window-width", type=int, default=config.DISPLAY_WINDOW_WIDTH, help="Optional display window width")
+    parser.add_argument("--window-height", type=int, default=config.DISPLAY_WINDOW_HEIGHT, help="Optional display window height")
+    parser.add_argument("--fullscreen", action="store_true", help="Start in fullscreen display mode")
     parser.add_argument("--air-test", action="store_true", help="Move instrument ROI upward for testing with a laptop camera")
     parser.add_argument("--instrument-roi", default=None, help="ROI ratios x1,y1,x2,y2 for pads/keys, e.g. 0.05,0.25,0.95,0.85")
     parser.add_argument("--list-cameras", action="store_true", help="List visible camera devices and exit")
@@ -275,6 +279,10 @@ def main() -> int:
     highlights: Dict[str, float] = {}
     gesture_update = GestureUpdate(gesture=Gesture.UNKNOWN)
     window_name = "AirDesk Instrument"
+    display_scale = max(0.25, float(args.display_scale))
+    fullscreen = bool(args.fullscreen)
+    webcam_rotation = 0
+    depth_calibration_frames_remaining = 0
     frame_metrics_text = ""
     last_debug_metrics_time = 0.0
     recorder: Optional[SessionRecorder] = None
@@ -295,6 +303,8 @@ def main() -> int:
         print(f"Recording session to {args.record_session}")
 
     try:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        _configure_window(window_name, fullscreen, args.window_width, args.window_height)
         while True:
             rgbd_frame: Optional[RGBDFrame] = None
             if args.camera_source == "record3d":
@@ -308,6 +318,7 @@ def main() -> int:
 
             if args.camera_source == "webcam":
                 frame = cv2.flip(frame, 1)
+                frame = _rotate_frame(frame, webcam_rotation)
             current_time = time.perf_counter()
             fps = fps_counter.update()
             metrics = None
@@ -329,9 +340,28 @@ def main() -> int:
 
             hand_roi = None if args.no_tracking_roi else tracking_roi(frame.shape, args.tracking_roi_y)
             hands = hand_tracker.process(frame, roi=hand_roi)
-            zones = layout.get_zones(display_frame.shape)
+            provisional_zones = layout.get_zones(display_frame.shape)
+            if depth_calibration_frames_remaining > 0 and depth_estimator is not None and rgbd_frame is not None:
+                depth_estimator.calibrate(rgbd_frame, provisional_zones)
+                depth_calibration_frames_remaining -= 1
+                if depth_calibration_frames_remaining == 0:
+                    quad = depth_estimator.estimate_piano_quad(display_frame.shape)
+                    if quad is not None:
+                        layout.set_piano_quad(quad)
+                        hit_detector.reset()
+                        highlights.clear()
+                        print(f"Depth calibration complete. Piano plane: {quad}")
+                    else:
+                        print("Depth calibration complete, but piano plane estimation failed. Using fallback keybed.")
+            hide_piano_until_calibrated = (
+                args.camera_source == "record3d"
+                and layout.mode == "piano"
+                and depth_estimator is not None
+                and (not depth_estimator.calibrated or depth_calibration_frames_remaining > 0)
+            )
+            zones = [] if hide_piano_until_calibrated else layout.get_zones(display_frame.shape)
             if depth_estimator is not None and args.auto_depth_baseline and not hands and not depth_estimator.calibrated and rgbd_frame is not None:
-                depth_estimator.calibrate(rgbd_frame, zones)
+                depth_estimator.calibrate(rgbd_frame, provisional_zones)
             depth_observations = depth_estimator.update(rgbd_frame, hands, zones) if depth_estimator is not None else {}
 
             if hands:
@@ -381,10 +411,10 @@ def main() -> int:
                 current_time=current_time,
                 hit_detector=hit_detector,
                 debug=args.debug,
-                debug_lines=_debug_lines(frame_metrics_text, depth_estimator),
+                debug_lines=_debug_lines(frame_metrics_text, depth_estimator, depth_calibration_frames_remaining),
             )
 
-            cv2.imshow(window_name, display_frame)
+            cv2.imshow(window_name, _display_frame(display_frame, display_scale, args.window_width, args.window_height))
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 break
@@ -396,14 +426,42 @@ def main() -> int:
                 layout.toggle_mode()
                 hit_detector.reset()
                 highlights.clear()
+                if layout.mode == "piano" and depth_estimator is not None and not depth_estimator.calibrated:
+                    layout.set_piano_quad(None)
             elif key == ord("e"):
                 loop_station.toggle_recording(current_time)
             elif key == ord("d"):
                 if depth_estimator is None or rgbd_frame is None:
                     print("Depth calibration unavailable for this camera source.")
                 else:
-                    ok_calibrated = depth_estimator.calibrate(rgbd_frame, zones)
-                    print(depth_estimator.status_text() if ok_calibrated else "Depth calibration failed.")
+                    depth_estimator.reset()
+                    layout.set_piano_quad(None)
+                    hit_detector.reset()
+                    depth_calibration_frames_remaining = max(1, int(args.depth_baseline_frames))
+                    print(f"Depth desk calibration started: collecting {depth_calibration_frames_remaining} frame(s).")
+            elif key == ord("o"):
+                if args.camera_source == "record3d":
+                    rotation = cap.rotate_clockwise()
+                    print(f"Record3D rotation: {rotation} degrees")
+                else:
+                    webcam_rotation = (webcam_rotation + 90) % 360
+                    print(f"Webcam rotation: {webcam_rotation} degrees")
+                hand_tracker.reset()
+                hit_detector.reset()
+                highlights.clear()
+                if depth_estimator is not None:
+                    depth_estimator.reset()
+                    layout.set_piano_quad(None)
+                    depth_calibration_frames_remaining = 0
+            elif key in {ord("="), ord("+")}:
+                display_scale = min(4.0, display_scale + 0.1)
+                print(f"Display scale: {display_scale:.2f}")
+            elif key in {ord("-"), ord("_")}:
+                display_scale = max(0.35, display_scale - 0.1)
+                print(f"Display scale: {display_scale:.2f}")
+            elif key == ord("f"):
+                fullscreen = not fullscreen
+                _configure_window(window_name, fullscreen, args.window_width, args.window_height)
             elif key == ord("["):
                 if args.camera_source == "webcam":
                     adjust_exposure(cap, camera_settings, -1.0)
@@ -599,11 +657,49 @@ def parse_roi(raw: Optional[str]) -> Optional[tuple[float, float, float, float]]
     return (x1, y1, x2, y2)
 
 
-def _debug_lines(frame_metrics_text: str, depth_estimator: Optional[DepthContactEstimator]) -> list[str]:
+def _configure_window(window_name: str, fullscreen: bool, width: int, height: int) -> None:
+    if fullscreen:
+        cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        return
+    cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+    if width > 0 and height > 0:
+        cv2.resizeWindow(window_name, width, height)
+
+
+def _display_frame(frame, scale: float, width: int, height: int):
+    if width > 0 and height > 0:
+        return cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
+    if abs(scale - 1.0) < 1e-3:
+        return frame
+    target = (
+        max(1, int(round(frame.shape[1] * scale))),
+        max(1, int(round(frame.shape[0] * scale))),
+    )
+    return cv2.resize(frame, target, interpolation=cv2.INTER_LINEAR)
+
+
+def _rotate_frame(frame, rotation_degrees: int):
+    rotation = rotation_degrees % 360
+    if rotation == 90:
+        return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    if rotation == 180:
+        return cv2.rotate(frame, cv2.ROTATE_180)
+    if rotation == 270:
+        return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return frame
+
+
+def _debug_lines(
+    frame_metrics_text: str,
+    depth_estimator: Optional[DepthContactEstimator],
+    depth_calibration_frames_remaining: int = 0,
+) -> list[str]:
     lines = []
     if frame_metrics_text:
         lines.append(frame_metrics_text)
     if depth_estimator is not None:
+        if depth_calibration_frames_remaining > 0:
+            lines.append(f"Depth: calibrating {depth_calibration_frames_remaining} frame(s)")
         lines.append(depth_estimator.status_text())
     return lines
 

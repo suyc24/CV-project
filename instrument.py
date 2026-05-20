@@ -62,6 +62,7 @@ class InstrumentLayout:
     def __init__(self, mode: str = "drum", roi_ratios: Tuple[float, float, float, float] | None = None) -> None:
         self.mode = mode
         self.roi_ratios = roi_ratios
+        self.piano_quad: Optional[Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]]] = None
 
     def set_mode(self, mode: str) -> None:
         if mode not in {"drum", "piano"}:
@@ -75,9 +76,17 @@ class InstrumentLayout:
     def set_roi_ratios(self, roi_ratios: Tuple[float, float, float, float] | None) -> None:
         self.roi_ratios = roi_ratios
 
+    def set_piano_quad(
+        self,
+        quad: Optional[Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]]],
+    ) -> None:
+        self.piano_quad = quad
+
     def get_zones(self, frame_shape: Tuple[int, int, int]) -> List[Zone]:
         height, width = frame_shape[:2]
         if self.mode == "piano":
+            if self.piano_quad is not None:
+                return self._piano_zones_from_quad(self.piano_quad)
             roi = self._piano_roi(width, height)
             return self._piano_zones(roi)
         roi = self._roi(width, height)
@@ -144,6 +153,40 @@ class InstrumentLayout:
         top_right = (x2 - top_inset, top_y)
         bottom_left = (x1, y2)
         bottom_right = (x2, y2)
+        zones: List[Zone] = []
+        for idx, label in enumerate(self.PIANO_LABELS):
+            t0 = idx / key_count
+            t1 = (idx + 1) / key_count
+            poly = (
+                _lerp_point(top_left, top_right, t0),
+                _lerp_point(top_left, top_right, t1),
+                _lerp_point(bottom_left, bottom_right, t1),
+                _lerp_point(bottom_left, bottom_right, t0),
+            )
+            xs = [point[0] for point in poly]
+            ys = [point[1] for point in poly]
+            zones.append(
+                Zone(
+                    label,
+                    label.lower(),
+                    min(xs),
+                    min(ys),
+                    max(xs),
+                    max(ys),
+                    "piano",
+                    press_ratio=config.PIANO_PRESS_RATIO,
+                    release_ratio=config.PIANO_RELEASE_RATIO,
+                    polygon=poly,
+                )
+            )
+        return zones
+
+    def _piano_zones_from_quad(
+        self,
+        quad: Tuple[Tuple[int, int], Tuple[int, int], Tuple[int, int], Tuple[int, int]],
+    ) -> List[Zone]:
+        top_left, top_right, bottom_right, bottom_left = quad
+        key_count = len(self.PIANO_LABELS)
         zones: List[Zone] = []
         for idx, label in enumerate(self.PIANO_LABELS):
             t0 = idx / key_count

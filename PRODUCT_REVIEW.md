@@ -315,6 +315,13 @@ Product note:
 - This is not absolute physical contact sensing. LiDAR depth is lower resolution than RGB and noisy at finger edges.
 - The robust product strategy is RGB for fingertip `x/y`, depth for contact probability, and the existing temporal state machine for tap intent.
 
+Follow-up polish:
+
+- Added display scaling/window controls so low-resolution Record3D streams are easier to inspect.
+- Added runtime rotation with `o`; rotating clears stale depth calibration and requires a fresh `d`.
+- Changed Record3D piano startup behavior: the piano is hidden until desk depth calibration completes.
+- After `d`, the app collects multiple depth frames, estimates a desk-aligned keybed quad, and anchors the keyboard to the lower screen instead of using the old fixed distorted overlay.
+
 ## Product-Level Roadmap
 
 1. Stabilize performance to 20+ FPS.

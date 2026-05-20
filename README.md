@@ -80,6 +80,9 @@ python main.py --camera 0 --mode piano
 - `--camera 0`：摄像头索引。
 - `--mode drum|piano`：启动模式，默认 `drum`。
 - `--debug`：显示每个触发指尖的 y 方向平滑速度和 pressed 状态。
+- `--display-scale 1.25`：放大 OpenCV 显示窗口，不改变检测坐标。
+- `--window-width/--window-height`：指定显示窗口尺寸。
+- `--fullscreen`：全屏显示。
 - `--list-cameras`：列出当前系统可见的摄像头设备并退出。
 - `--calibrate-camera`：自动测试曝光/可选对焦，按画面清晰度和过曝比例保存 `camera_profile.json`。
 - `--camera-profile camera_profile.json`：读取/写入摄像头 profile。正常运行时如果该文件存在会自动加载。
@@ -148,7 +151,7 @@ python main.py --camera-source record3d --record3d-device 0 --mode piano --debug
 python main.py --camera-source record3d --mode piano --record3d-rotate 90 --debug
 ```
 
-启动后先把手移开虚拟琴键区域，按 `d` 校准桌面深度。校准成功后右上角 debug 会显示 `Depth: calibrated`。之后系统仍然用 RGB/MediaPipe 追踪指尖 `x/y`，但会用 Record3D depth 判断指尖是否接近桌面平面。
+启动后先把手移开虚拟琴键区域，按 `d` 校准桌面深度。校准期间琴键会暂时隐藏，校准成功后才会在画面下方生成一块贴合桌面角度的钢琴平面。之后系统仍然用 RGB/MediaPipe 追踪指尖 `x/y`，但会用 Record3D depth 判断指尖是否接近桌面平面。
 
 默认 `--depth-contact-mode auto` 在 Record3D 下等价于 `assist`：深度信息只作为防误触辅助。如果你想让触发必须满足深度接触，使用：
 
@@ -269,7 +272,10 @@ python main.py --camera 0 --backend dshow --mode piano --air-test --debug
 - `r`：清空 loop。
 - `space`：播放/暂停 loop。
 - `e`：开始/停止录制 loop，作为手势录制的备用控制。
-- `d`：使用当前 Record3D depth 帧校准桌面深度。校准时手需要离开琴键区域。
+- `d`：采集多帧 Record3D depth，校准桌面深度并生成桌面贴合钢琴平面。校准时手需要离开琴键区域。
+- `o`：运行时旋转画面 90 度。旋转后会清空旧 depth 校准，需要重新按 `d`。
+- `+` / `-`：放大 / 缩小显示窗口。
+- `f`：切换全屏。
 - `[` / `]`：运行时降低 / 提高曝光，方便现场微调画面。
 - `a`：切换自动曝光。
 - `p`：把当前摄像头参数保存到 `camera_profile.json`。

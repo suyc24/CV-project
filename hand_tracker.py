@@ -162,6 +162,12 @@ class HandTracker:
         hands = self._smooth(hands)
         return self._stabilize_with_optical_flow(frame_bgr, hands)
 
+    def reset(self) -> None:
+        self._smoothed_points.clear()
+        self._tracked_hand_centers.clear()
+        self._flow_points.clear()
+        self._last_gray = None
+
     def _process_legacy(
         self,
         frame_bgr,
