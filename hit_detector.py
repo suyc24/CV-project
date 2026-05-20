@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Deque, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Deque, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import config
 from instrument import Zone
 from utils import clamp
 
 if TYPE_CHECKING:
+    from depth_contact import DepthObservation
     from hand_tracker import HandLandmarks
 
 
@@ -79,7 +80,13 @@ class HitDetector:
         self._states.clear()
         self._diagnostics.clear()
 
-    def update(self, hands: Iterable["HandLandmarks"], zones: List[Zone], current_time: float) -> List[HitEvent]:
+    def update(
+        self,
+        hands: Iterable["HandLandmarks"],
+        zones: List[Zone],
+        current_time: float,
+        depth_observations: Optional[Mapping[Tuple[int, int], "DepthObservation"]] = None,
+    ) -> List[HitEvent]:
         hits: List[HitEvent] = []
         self._diagnostics = []
         for hand in hands:
@@ -97,6 +104,7 @@ class HitDetector:
                 velocity_y = self._update_velocity(state, position, relative_y, current_time)
                 zone = self._zone_at(zones, position)
                 self._update_release_state(state, zone, y, relative_y)
+                depth_observation = (depth_observations or {}).get((hand.hand_id, finger_id))
 
                 reason = self._miss_reason(
                     state,
@@ -107,6 +115,7 @@ class HitDetector:
                     current_time,
                     previous_position,
                     previous_relative_y,
+                    depth_observation,
                 )
                 diagnostic = {
                     "hand_id": hand.hand_id,
@@ -124,6 +133,9 @@ class HitDetector:
                     "reason": reason,
                     "threshold": self._threshold_for(zone) if zone else None,
                     "press_y": zone.press_y if zone else None,
+                    "depth_contact": depth_observation.contact if depth_observation else None,
+                    "depth_height_m": depth_observation.height_above_desk_m if depth_observation else None,
+                    "depth_reason": depth_observation.reason if depth_observation else None,
                 }
                 self._diagnostics.append(diagnostic)
                 if zone and reason == "hit":
@@ -365,6 +377,7 @@ class HitDetector:
         current_time: float,
         previous_position: Optional[Tuple[int, int]],
         previous_relative_y: Optional[float],
+        depth_observation: Optional["DepthObservation"],
     ) -> str:
         if zone is None:
             self._update_air_motion_state(state, finger_y, relative_y)
@@ -382,6 +395,7 @@ class HitDetector:
                 relative_y,
                 previous_position,
                 previous_relative_y,
+                depth_observation,
             )
         if finger_y <= zone.press_y:
             return "press_line"
@@ -398,6 +412,7 @@ class HitDetector:
         relative_y: float,
         previous_position: Optional[Tuple[int, int]],
         previous_relative_y: Optional[float],
+        depth_observation: Optional["DepthObservation"],
     ) -> str:
         arm_y = zone.y1 + config.PIANO_ARM_RATIO * zone.height
         motion_y = relative_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else finger_y
@@ -513,6 +528,9 @@ class HitDetector:
         strike_velocity = self._hit_velocity(state, velocity_y)
         if config.PIANO_JITTER_GUARD_ENABLED and not self._passes_piano_jitter_guard(state, strike_velocity, drop_px):
             return "jitter_guard"
+        depth_reason = self._depth_contact_block_reason(depth_observation)
+        if depth_reason:
+            return depth_reason
         if strike_velocity >= config.PIANO_STRIKE_MIN_VELOCITY:
             return "hit"
         return "velocity"
@@ -564,6 +582,23 @@ class HitDetector:
         if config.PIANO_USE_RELATIVE_FINGER_MOTION:
             return current[2] - previous[2]
         return float(current[1] - previous[1])
+
+    def _depth_contact_block_reason(self, observation: Optional["DepthObservation"]) -> Optional[str]:
+        mode = config.DEPTH_CONTACT_MODE
+        if mode == "off":
+            return None
+        if observation is None:
+            return "depth_unknown" if mode == "required" else None
+        if observation.contact is True:
+            return None
+        if observation.contact is None:
+            return f"depth_{observation.reason}" if mode == "required" else None
+        height = observation.height_above_desk_m
+        if mode == "required":
+            return "depth_air"
+        if height is not None and height > config.DEPTH_RELEASE_THRESHOLD_M:
+            return "depth_air"
+        return None
 
     def _update_air_motion_state(self, state: FingerState, finger_y: int, relative_y: float) -> None:
         if state.is_pressed:

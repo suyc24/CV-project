@@ -56,6 +56,12 @@ curl -L https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_lan
 
 代码会把 `.task` 模型读成内存 buffer 再交给 MediaPipe，避免 Windows 路径中包含盘符、空格或中文目录时被 MediaPipe 拼成错误路径。
 
+Record3D / iPhone LiDAR 是可选输入源，不放进默认依赖里，避免没有 iPhone 的环境安装失败。需要 RGB-D 输入时额外安装：
+
+```bash
+pip install -r requirements-record3d.txt
+```
+
 ## 运行
 
 ```bash
@@ -70,6 +76,7 @@ python main.py --camera 0 --mode piano
 
 参数：
 
+- `--camera-source webcam|record3d`：输入源，默认 `webcam`。`record3d` 使用 iPhone/iPad 的 RGB-D 流。
 - `--camera 0`：摄像头索引。
 - `--mode drum|piano`：启动模式，默认 `drum`。
 - `--debug`：显示每个触发指尖的 y 方向平滑速度和 pressed 状态。
@@ -98,12 +105,58 @@ python main.py --camera 0 --mode piano
 - `--min-detection-confidence 0.55` / `--min-tracking-confidence 0.55`：MediaPipe 手部检测/追踪置信度。
 - `--record-session data/sessions/test01`：保存可离线回放的 session 数据。
 - `--no-record-video`：只保存 landmarks/diagnostics JSONL，不保存 AVI 视频。
+- `--record3d-device 0`：Record3D 设备索引。
+- `--record3d-rotate 0|90|180|270`：旋转 Record3D 画面，用来适配手机横竖屏安装方向。
+- `--record3d-mirror`：水平镜像 Record3D 画面。
+- `--record3d-depth-unit auto|m|cm|mm`：深度单位，默认自动判断。
+- `--depth-contact-mode auto|off|assist|required`：RGB-D 接触判定模式。`assist` 只在深度明确显示手指离桌面很高时拦截；`required` 要求明确接触才触发。
+- `--depth-contact-threshold 0.075`：指尖高于桌面多少米以内算接触。
+- `--depth-release-threshold 0.14`：指尖高于桌面多少米以上算明确离桌面。
 
 摄像头诊断：
 
 ```bash
 python main.py --list-cameras
 ```
+
+Record3D 设备诊断：
+
+```bash
+python main.py --camera-source record3d --list-cameras
+```
+
+## Record3D RGB-D 输入
+
+Record3D 适合有 LiDAR 的 iPhone/iPad。推荐使用 USB streaming，不建议用 Wi-Fi 做触键主输入。
+
+手机端：
+
+- 安装并打开 Record3D。
+- 用 USB 连接电脑，并在手机上信任电脑。
+- 在 Record3D 里开启 Live RGBD Video Streaming over USB。
+- 把手机固定在桌面侧上方或斜上方，能同时看到手指和虚拟键盘区域。
+
+电脑端运行：
+
+```bash
+python main.py --camera-source record3d --record3d-device 0 --mode piano --debug
+```
+
+如果手机画面方向不对：
+
+```bash
+python main.py --camera-source record3d --mode piano --record3d-rotate 90 --debug
+```
+
+启动后先把手移开虚拟琴键区域，按 `d` 校准桌面深度。校准成功后右上角 debug 会显示 `Depth: calibrated`。之后系统仍然用 RGB/MediaPipe 追踪指尖 `x/y`，但会用 Record3D depth 判断指尖是否接近桌面平面。
+
+默认 `--depth-contact-mode auto` 在 Record3D 下等价于 `assist`：深度信息只作为防误触辅助。如果你想让触发必须满足深度接触，使用：
+
+```bash
+python main.py --camera-source record3d --mode piano --depth-contact-mode required --debug
+```
+
+`required` 更产品化但也更挑摄像头摆位和深度质量。如果漏触多，先用 `assist`。
 
 摄像头自动校准：
 
@@ -216,6 +269,7 @@ python main.py --camera 0 --backend dshow --mode piano --air-test --debug
 - `r`：清空 loop。
 - `space`：播放/暂停 loop。
 - `e`：开始/停止录制 loop，作为手势录制的备用控制。
+- `d`：使用当前 Record3D depth 帧校准桌面深度。校准时手需要离开琴键区域。
 - `[` / `]`：运行时降低 / 提高曝光，方便现场微调画面。
 - `a`：切换自动曝光。
 - `p`：把当前摄像头参数保存到 `camera_profile.json`。
@@ -382,6 +436,19 @@ hit 后进入 pressed 状态。只有当指尖明显抬起，或离开当前区�
 
 FPS 低时通常不是摄像头本身慢，而是实时管线里有几项很吃 CPU：MediaPipe 手部追踪、透视钢琴图层合成、手部抠图、debug 清晰度指标和 session 录制。当前版本已经缓存钢琴透视贴图、降低默认 MediaPipe 输入宽度、降低手部 mask 模糊半径，并让 debug 画质指标按间隔采样。如果仍然低于 20 FPS，优先尝试 `--max-hands 1 --tracking-max-width 360 --no-hand-cutout`。
 
+### RGB-D Contact Gating
+
+`rgbd_camera.py` 把 Record3D 的 callback 流包装成 `read()` 接口，输出 RGB、depth、confidence 和 timestamp。`depth_contact.py` 负责桌面接触估计：
+
+- 按 `d` 时记录当前虚拟琴键区域的桌面 depth baseline；
+- 每帧把 depth resize 到 RGB 画面尺寸；
+- 对每个指尖采样局部 median depth；
+- 计算 `height_above_desk = desk_depth - finger_depth`；
+- 如果高度小于 `DEPTH_CONTACT_THRESHOLD_M`，认为指尖接近桌面；
+- 如果高度大于 `DEPTH_RELEASE_THRESHOLD_M`，在 `assist` 模式下会拦截这次触发。
+
+这不是精确物理深度重建，而是用 RGB-D 作为“接触概率”的额外证据。产品上它比单目 `y` 速度更稳，尤其能减少手停在键盘上时的误触。
+
 音量映射：
 
 ```python
@@ -411,6 +478,8 @@ volume = clamp(
 
 - 单目摄像头无法得到精确真实物理力，本项目只做相对力度估计。
 - MediaPipe 的 `z` 不等于真实物理深度，当前 hit detection 主要使用像素 y 方向速度。
+- Record3D/LiDAR depth 分辨率低于 RGB，指尖边缘会有噪声和空洞，所以默认只作为辅助证据。
+- Record3D 的 RGB/depth 对齐、画面旋转和镜像依赖手机安装方向；必要时用 `--record3d-rotate` 和 `--record3d-mirror` 调整。
 - 光照、摄像头角度、运动模糊、遮挡都会影响 landmarks 稳定性。
 - 当前版本使用固定桌面 ROI，没有做桌面平面重建或四点标定。
 - `THUMB_UP` 在俯拍桌面视角下可能不如握拳和张掌稳定。

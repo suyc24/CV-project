@@ -53,9 +53,11 @@ class SessionRecorder:
         zones: Iterable[Zone],
         hits: Iterable[HitEvent],
         diagnostics: Iterable[Dict[str, Any]],
-        gesture: str,
-        loop_state: str,
-        mode: str,
+        depth_observations: Optional[Dict[tuple[int, int], Any]] = None,
+        depth_status: str = "",
+        gesture: str = "",
+        loop_state: str = "",
+        mode: str = "",
     ) -> None:
         if self.record_video:
             self._write_video_frame(frame, fps)
@@ -71,6 +73,8 @@ class SessionRecorder:
             "zones": [_zone_to_dict(zone) for zone in zones],
             "hits": [_hit_to_dict(hit) for hit in hits],
             "diagnostics": list(diagnostics),
+            "depth_observations": _depth_observations_to_dict(depth_observations or {}),
+            "depth_status": depth_status,
             "gesture": gesture,
             "loop_state": loop_state,
         }
@@ -134,6 +138,21 @@ def _hit_to_dict(hit: HitEvent) -> Dict[str, Any]:
         "velocity": hit.velocity,
         "volume": hit.volume,
     }
+
+
+def _depth_observations_to_dict(observations: Dict[tuple[int, int], Any]) -> list[Dict[str, Any]]:
+    rows = []
+    for (hand_id, finger_id), observation in observations.items():
+        if is_dataclass(observation):
+            row = asdict(observation)
+        elif isinstance(observation, dict):
+            row = dict(observation)
+        else:
+            row = {}
+        row.setdefault("hand_id", hand_id)
+        row.setdefault("finger_id", finger_id)
+        rows.append(row)
+    return rows
 
 
 def _dataclass_to_dict(value) -> Dict[str, Any]:

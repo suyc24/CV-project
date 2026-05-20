@@ -282,6 +282,39 @@ Replay results after the precision guard:
 
 The offline hit count drops on older sessions because many previous hits looked like short lift/jitter repeats. The default now intentionally favors product stability; if the next live test feels too strict, use `--piano-sensitivity balanced` before loosening the detector further.
 
+## Tenth Record3D RGB-D Integration
+
+User goal: move beyond toy single-webcam tracking by using Record3D/iPhone LiDAR as a more product-grade RGB-D source.
+
+Changes:
+
+- Added `rgbd_camera.py`.
+  - Wraps the optional Record3D SDK into a blocking `read()` camera interface.
+  - Supports device selection, frame timeout, rotation, mirroring, and depth-unit normalization.
+- Added `depth_contact.py`.
+  - Press `d` with hands away from the keys to calibrate a desk depth baseline.
+  - Runtime samples local median depth around each fingertip.
+  - Computes approximate height above the calibrated desk plane.
+  - Returns conservative contact observations: contact, above desk, or unknown.
+- Added depth-gated hit detection.
+  - `--depth-contact-mode assist` blocks only when depth clearly says the finger is above the desk.
+  - `--depth-contact-mode required` requires depth-confirmed contact for piano hits.
+  - Default `auto` enables `assist` for Record3D and disables depth gating for webcams.
+- Added session logging for depth observations and depth status.
+
+Recommended first Record3D run:
+
+```bash
+python main.py --camera-source record3d --record3d-device 0 --mode piano --debug
+```
+
+After the window opens, remove hands from the keybed and press `d` to calibrate the desk depth.
+
+Product note:
+
+- This is not absolute physical contact sensing. LiDAR depth is lower resolution than RGB and noisy at finger edges.
+- The robust product strategy is RGB for fingertip `x/y`, depth for contact probability, and the existing temporal state machine for tap intent.
+
 ## Product-Level Roadmap
 
 1. Stabilize performance to 20+ FPS.

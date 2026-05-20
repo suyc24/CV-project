@@ -30,11 +30,13 @@ from camera_utils import (
     save_camera_profile,
     tracking_roi,
 )
+from depth_contact import DepthContactEstimator
 from gesture_recognizer import Gesture, GestureController, GestureRecognizer, GestureUpdate
 from hand_tracker import HandTracker
 from hit_detector import HitDetector, HitEvent
 from instrument import InstrumentLayout
 from loop_station import LoopStation
+from rgbd_camera import RGBDFrame, Record3DCamera, list_record3d_devices
 from session_recorder import SessionRecorder
 from ui import draw_scene
 from utils import FPSCounter
@@ -42,6 +44,7 @@ from utils import FPSCounter
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="AirDesk Instrument: monocular virtual desktop instrument")
+    parser.add_argument("--camera-source", choices=["webcam", "record3d"], default="webcam", help="Video source")
     parser.add_argument("--camera", type=int, default=0, help="OpenCV camera index")
     parser.add_argument("--mode", choices=["drum", "piano"], default="drum", help="Instrument mode")
     parser.add_argument("--debug", action="store_true", help="Show velocity and state debug overlays")
@@ -114,6 +117,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-calibration-preview", action="store_true", help="Hide calibration preview window")
     parser.add_argument("--record-session", default=None, help="Directory to save replayable session data")
     parser.add_argument("--no-record-video", action="store_true", help="Record JSONL landmarks/diagnostics without AVI video")
+    parser.add_argument("--record3d-device", type=int, default=0, help="Record3D device index")
+    parser.add_argument("--record3d-timeout", type=float, default=2.0, help="Seconds to wait for each Record3D frame")
+    parser.add_argument("--record3d-rotate", type=int, choices=[0, 90, 180, 270], default=0, help="Rotate Record3D frames")
+    parser.add_argument("--record3d-mirror", action="store_true", help="Mirror Record3D frames horizontally")
+    parser.add_argument("--record3d-depth-unit", choices=["auto", "m", "cm", "mm"], default="auto", help="Record3D depth unit")
+    parser.add_argument("--depth-contact-mode", choices=["auto", "off", "assist", "required"], default="auto", help="How RGB-D contact evidence gates piano hits")
+    parser.add_argument("--depth-contact-threshold", type=float, default=config.DEPTH_CONTACT_THRESHOLD_M, help="Meters above calibrated desk considered contact")
+    parser.add_argument("--depth-release-threshold", type=float, default=config.DEPTH_RELEASE_THRESHOLD_M, help="Meters above calibrated desk considered definitely in air")
+    parser.add_argument("--depth-baseline-frames", type=int, default=config.DEPTH_BASELINE_FRAMES, help="Frames used for desk depth calibration")
+    parser.add_argument("--depth-min-confidence", type=float, default=config.DEPTH_MIN_CONFIDENCE, help="Minimum Record3D confidence for contact gating")
+    parser.add_argument("--auto-depth-baseline", action="store_true", help="Continuously build a depth baseline while uncalibrated")
     return parser.parse_args()
 
 
@@ -150,7 +164,7 @@ def open_camera(camera_index: int, settings: CameraSettings, warmup_frames: int 
 def main() -> int:
     args = parse_args()
     apply_runtime_tracking_config(args)
-    camera_settings = build_camera_settings(args)
+    camera_settings = build_camera_settings(args) if args.camera_source == "webcam" else CameraSettings()
     try:
         instrument_roi = parse_roi(args.instrument_roi)
     except ValueError as exc:
@@ -160,14 +174,29 @@ def main() -> int:
         instrument_roi = (0.05, 0.25, 0.95, 0.85)
         args.tracking_roi_y = 0.0
     if args.show_camera_profile:
+        if args.camera_source != "webcam":
+            print("Record3D source does not use OpenCV camera profiles.")
+            return 0
         print_camera_settings("Effective camera settings", camera_settings)
         return 0
 
     if args.list_cameras:
-        list_cameras(backend=args.backend)
+        if args.camera_source == "record3d":
+            devices = list_record3d_devices()
+            print("Record3D devices:")
+            if devices:
+                for index, device in enumerate(devices):
+                    print(f"  index {index}: {device}")
+            else:
+                print("  none found")
+        else:
+            list_cameras(backend=args.backend)
         return 0
 
     if args.calibrate_camera:
+        if args.camera_source != "webcam":
+            print("Calibration error: --calibrate-camera is only for OpenCV webcam sources.", file=sys.stderr)
+            return 1
         try:
             result = calibrate_camera(
                 camera_index=args.camera,
@@ -196,12 +225,21 @@ def main() -> int:
         return 0
 
     try:
-        cap = open_camera(
-            args.camera,
-            camera_settings,
-            warmup_frames=args.camera_warmup_frames,
-            reapply=not args.no_reapply_camera_settings,
-        )
+        if args.camera_source == "record3d":
+            cap = Record3DCamera(
+                device_index=args.record3d_device,
+                timeout_seconds=args.record3d_timeout,
+                rotate_degrees=args.record3d_rotate,
+                mirror=args.record3d_mirror,
+                depth_unit=args.record3d_depth_unit,
+            )
+        else:
+            cap = open_camera(
+                args.camera,
+                camera_settings,
+                warmup_frames=args.camera_warmup_frames,
+                reapply=not args.no_reapply_camera_settings,
+            )
         audio_engine = AudioEngine()
         hand_tracker = HandTracker(
             max_num_hands=args.max_hands,
@@ -225,6 +263,13 @@ def main() -> int:
     gesture_recognizer = GestureRecognizer()
     gesture_controller = GestureController()
     fps_counter = FPSCounter()
+    depth_estimator = DepthContactEstimator(
+        mode=config.DEPTH_CONTACT_MODE,
+        contact_threshold_m=args.depth_contact_threshold,
+        release_threshold_m=args.depth_release_threshold,
+        baseline_frames=args.depth_baseline_frames,
+        min_confidence=args.depth_min_confidence,
+    ) if config.DEPTH_CONTACT_MODE != "off" else None
 
     recent_hit: Optional[HitEvent] = None
     highlights: Dict[str, float] = {}
@@ -239,8 +284,10 @@ def main() -> int:
             metadata={
                 "args": vars(args),
                 "camera_settings": camera_settings,
+                "camera_source": args.camera_source,
                 "instrument_roi": instrument_roi,
                 "mode": layout.mode,
+                "depth_contact_mode": config.DEPTH_CONTACT_MODE,
             },
             record_video=not args.no_record_video,
             fps=camera_settings.fps,
@@ -249,12 +296,18 @@ def main() -> int:
 
     try:
         while True:
-            ok, frame = cap.read()
+            rgbd_frame: Optional[RGBDFrame] = None
+            if args.camera_source == "record3d":
+                ok, rgbd_frame = cap.read()
+                frame = rgbd_frame.color_bgr if ok and rgbd_frame is not None else None
+            else:
+                ok, frame = cap.read()
             if not ok or frame is None:
                 print("Camera frame read failed. Exiting.", file=sys.stderr)
                 break
 
-            frame = cv2.flip(frame, 1)
+            if args.camera_source == "webcam":
+                frame = cv2.flip(frame, 1)
             current_time = time.perf_counter()
             fps = fps_counter.update()
             metrics = None
@@ -277,6 +330,9 @@ def main() -> int:
             hand_roi = None if args.no_tracking_roi else tracking_roi(frame.shape, args.tracking_roi_y)
             hands = hand_tracker.process(frame, roi=hand_roi)
             zones = layout.get_zones(display_frame.shape)
+            if depth_estimator is not None and args.auto_depth_baseline and not hands and not depth_estimator.calibrated and rgbd_frame is not None:
+                depth_estimator.calibrate(rgbd_frame, zones)
+            depth_observations = depth_estimator.update(rgbd_frame, hands, zones) if depth_estimator is not None else {}
 
             if hands:
                 gesture = gesture_recognizer.recognize(hands[0])
@@ -284,7 +340,7 @@ def main() -> int:
             else:
                 gesture_update = gesture_controller.update(Gesture.UNKNOWN, current_time, loop_station)
 
-            hits = hit_detector.update(hands, zones, current_time)
+            hits = hit_detector.update(hands, zones, current_time, depth_observations=depth_observations)
             diagnostics = hit_detector.diagnostics()
             for hit in hits:
                 audio_engine.play(hit.sound_id, hit.volume)
@@ -305,6 +361,8 @@ def main() -> int:
                     zones=zones,
                     hits=hits,
                     diagnostics=diagnostics,
+                    depth_observations=depth_observations,
+                    depth_status=depth_estimator.status_text() if depth_estimator is not None else "Depth: off",
                     gesture=gesture_update.gesture.value,
                     loop_state=loop_station.state.value,
                     mode=layout.mode,
@@ -323,7 +381,7 @@ def main() -> int:
                 current_time=current_time,
                 hit_detector=hit_detector,
                 debug=args.debug,
-                debug_lines=[frame_metrics_text] if frame_metrics_text else None,
+                debug_lines=_debug_lines(frame_metrics_text, depth_estimator),
             )
 
             cv2.imshow(window_name, display_frame)
@@ -340,15 +398,27 @@ def main() -> int:
                 highlights.clear()
             elif key == ord("e"):
                 loop_station.toggle_recording(current_time)
+            elif key == ord("d"):
+                if depth_estimator is None or rgbd_frame is None:
+                    print("Depth calibration unavailable for this camera source.")
+                else:
+                    ok_calibrated = depth_estimator.calibrate(rgbd_frame, zones)
+                    print(depth_estimator.status_text() if ok_calibrated else "Depth calibration failed.")
             elif key == ord("["):
-                adjust_exposure(cap, camera_settings, -1.0)
+                if args.camera_source == "webcam":
+                    adjust_exposure(cap, camera_settings, -1.0)
             elif key == ord("]"):
-                adjust_exposure(cap, camera_settings, 1.0)
+                if args.camera_source == "webcam":
+                    adjust_exposure(cap, camera_settings, 1.0)
             elif key == ord("a"):
+                if args.camera_source != "webcam":
+                    continue
                 camera_settings.auto_exposure = not camera_settings.auto_exposure
                 actual = configure_capture(cap, camera_settings)
                 print(f"Auto exposure={camera_settings.auto_exposure} actual={actual['auto_exposure']:.2f}")
             elif key == ord("p"):
+                if args.camera_source != "webcam":
+                    continue
                 metrics = measure_frame_quality(frame)
                 save_camera_profile(args.camera_profile, camera_settings, metrics)
                 print(
@@ -434,6 +504,16 @@ def apply_runtime_tracking_config(args: argparse.Namespace) -> None:
         config.PIANO_RELEASE_MIN_UP_VELOCITY = 14.0
         config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER = 1.4
 
+    if args.depth_contact_mode == "auto":
+        config.DEPTH_CONTACT_MODE = "assist" if args.camera_source == "record3d" else "off"
+    else:
+        config.DEPTH_CONTACT_MODE = args.depth_contact_mode
+    config.DEPTH_CONTACT_THRESHOLD_M = args.depth_contact_threshold
+    config.DEPTH_RELEASE_THRESHOLD_M = args.depth_release_threshold
+    config.DEPTH_BASELINE_FRAMES = args.depth_baseline_frames
+    config.DEPTH_MIN_CONFIDENCE = args.depth_min_confidence
+    config.DEPTH_AUTO_BASELINE_WHEN_UNCALIBRATED = args.auto_depth_baseline
+
 
 def print_camera_settings(label: str, settings: CameraSettings) -> None:
     print(
@@ -517,6 +597,15 @@ def parse_roi(raw: Optional[str]) -> Optional[tuple[float, float, float, float]]
     if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
         raise ValueError("--instrument-roi values must satisfy 0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1")
     return (x1, y1, x2, y2)
+
+
+def _debug_lines(frame_metrics_text: str, depth_estimator: Optional[DepthContactEstimator]) -> list[str]:
+    lines = []
+    if frame_metrics_text:
+        lines.append(frame_metrics_text)
+    if depth_estimator is not None:
+        lines.append(depth_estimator.status_text())
+    return lines
 
 
 def _expire_highlights(highlights: Dict[str, float], current_time: float) -> None:

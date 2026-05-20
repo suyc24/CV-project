@@ -1,0 +1,5 @@
+# Optional dependencies for iPhone/iPad RGB-D input through the Record3D app.
+# Install after the base requirements:
+#   pip install -r requirements.txt
+#   pip install -r requirements-record3d.txt
+record3d
