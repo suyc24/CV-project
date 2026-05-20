@@ -193,7 +193,14 @@ class DepthContactEstimator:
             dtype=np.float32,
         )
         bottom_width = width * config.DEPTH_KEYBED_WIDTH_RATIO
-        keybed_height = height * config.DEPTH_KEYBED_HEIGHT_RATIO
+        keybed_height = bottom_width * config.DEPTH_KEYBED_LENGTH_TO_WIDTH_RATIO
+        keybed_height = float(
+            np.clip(
+                keybed_height,
+                height * config.DEPTH_KEYBED_MIN_HEIGHT_RATIO,
+                height * config.DEPTH_KEYBED_MAX_HEIGHT_RATIO,
+            )
+        )
         top_width = bottom_width * config.DEPTH_KEYBED_TOP_SCALE
         top_center = bottom_center + up * keybed_height
 

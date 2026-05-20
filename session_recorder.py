@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
 import cv2
+import numpy as np
 
 from hand_tracker import HandLandmarks
 from hit_detector import HitEvent
@@ -28,6 +29,7 @@ class SessionRecorder:
         self.frame_count = 0
         self.start_time = time.perf_counter()
         self._video_writer = None
+        self._video_size: Optional[tuple[int, int]] = None
         self._frames_file = (self.output_dir / "frames.jsonl").open("w", encoding="utf-8")
         self._metadata = {
             **metadata,
@@ -97,9 +99,12 @@ class SessionRecorder:
     def _write_video_frame(self, frame, fps: float) -> None:
         if self._video_writer is None:
             height, width = frame.shape[:2]
+            self._video_size = (width, height)
             fourcc = cv2.VideoWriter_fourcc(*"MJPG")
             video_path = str(self.output_dir / "raw_video.avi")
             self._video_writer = cv2.VideoWriter(video_path, fourcc, max(1.0, fps or self.fps), (width, height))
+        elif self._video_size is not None and frame.shape[:2] != (self._video_size[1], self._video_size[0]):
+            frame = _fit_frame_to_size(frame, self._video_size[0], self._video_size[1])
         self._video_writer.write(frame)
 
 
@@ -175,3 +180,19 @@ def _json_safe(value):
     if isinstance(value, Path):
         return str(value)
     return value
+
+
+def _fit_frame_to_size(frame, width: int, height: int):
+    src_h, src_w = frame.shape[:2]
+    if src_w <= 0 or src_h <= 0:
+        return frame
+    scale = min(width / src_w, height / src_h)
+    fit_w = max(1, int(round(src_w * scale)))
+    fit_h = max(1, int(round(src_h * scale)))
+    interpolation = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+    resized = cv2.resize(frame, (fit_w, fit_h), interpolation=interpolation)
+    canvas = np.zeros((height, width, frame.shape[2]), dtype=frame.dtype)
+    x = (width - fit_w) // 2
+    y = (height - fit_h) // 2
+    canvas[y : y + fit_h, x : x + fit_w] = resized
+    return canvas

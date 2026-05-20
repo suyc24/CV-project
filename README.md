@@ -81,7 +81,7 @@ python main.py --camera 0 --mode piano
 - `--mode drum|piano`：启动模式，默认 `drum`。
 - `--debug`：显示每个触发指尖的 y 方向平滑速度和 pressed 状态。
 - `--display-scale 1.25`：放大 OpenCV 显示窗口，不改变检测坐标。
-- `--window-width/--window-height`：指定显示窗口尺寸。
+- `--window-width/--window-height`：指定显示窗口尺寸。画面会等比例缩放并补黑边，不会强行拉伸。
 - `--fullscreen`：全屏显示。
 - `--list-cameras`：列出当前系统可见的摄像头设备并退出。
 - `--calibrate-camera`：自动测试曝光/可选对焦，按画面清晰度和过曝比例保存 `camera_profile.json`。
@@ -273,7 +273,7 @@ python main.py --camera 0 --backend dshow --mode piano --air-test --debug
 - `space`：播放/暂停 loop。
 - `e`：开始/停止录制 loop，作为手势录制的备用控制。
 - `d`：采集多帧 Record3D depth，校准桌面深度并生成桌面贴合钢琴平面。校准时手需要离开琴键区域。
-- `o`：运行时旋转画面 90 度。旋转后会清空旧 depth 校准，需要重新按 `d`。
+- `o`：运行时旋转画面 90 度。窗口会自动适配新的横竖比例；旋转后会清空旧 depth 校准，需要重新按 `d`。
 - `+` / `-`：放大 / 缩小显示窗口。
 - `f`：切换全屏。
 - `[` / `]`：运行时降低 / 提高曝光，方便现场微调画面。
@@ -294,7 +294,7 @@ session 目录包含：
 
 - `metadata.json`：运行参数、摄像头设置、模式。
 - `frames.jsonl`：每帧 landmarks、zones、hit events、miss reasons、亮度/清晰度指标。
-- `raw_video.avi`：原始摄像头帧，不包含 UI 叠加。
+- `raw_video.avi`：原始摄像头帧，不包含 UI 叠加。如果录制期间切换横竖屏，视频会等比例补边，避免被 OpenCV 裁切或拉伸。
 - `summary.json`：帧数和时长。
 
 如果只想保存轻量数据，不保存视频：

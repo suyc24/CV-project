@@ -15,6 +15,8 @@ except Exception as exc:  # pragma: no cover - depends on local install
     )
     raise SystemExit(1) from exc
 
+import numpy as np
+
 import config
 from audio_engine import AudioEngine
 from camera_utils import (
@@ -281,6 +283,7 @@ def main() -> int:
     window_name = "AirDesk Instrument"
     display_scale = max(0.25, float(args.display_scale))
     fullscreen = bool(args.fullscreen)
+    last_window_image_size: Optional[tuple[int, int]] = None
     webcam_rotation = 0
     depth_calibration_frames_remaining = 0
     frame_metrics_text = ""
@@ -414,7 +417,17 @@ def main() -> int:
                 debug_lines=_debug_lines(frame_metrics_text, depth_estimator, depth_calibration_frames_remaining),
             )
 
-            cv2.imshow(window_name, _display_frame(display_frame, display_scale, args.window_width, args.window_height))
+            output_frame = _display_frame(display_frame, display_scale, args.window_width, args.window_height)
+            output_size = (output_frame.shape[1], output_frame.shape[0])
+            if (
+                not fullscreen
+                and args.window_width <= 0
+                and args.window_height <= 0
+                and output_size != last_window_image_size
+            ):
+                cv2.resizeWindow(window_name, output_size[0], output_size[1])
+                last_window_image_size = output_size
+            cv2.imshow(window_name, output_frame)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 break
@@ -455,13 +468,16 @@ def main() -> int:
                     depth_calibration_frames_remaining = 0
             elif key in {ord("="), ord("+")}:
                 display_scale = min(4.0, display_scale + 0.1)
+                last_window_image_size = None
                 print(f"Display scale: {display_scale:.2f}")
             elif key in {ord("-"), ord("_")}:
                 display_scale = max(0.35, display_scale - 0.1)
+                last_window_image_size = None
                 print(f"Display scale: {display_scale:.2f}")
             elif key == ord("f"):
                 fullscreen = not fullscreen
                 _configure_window(window_name, fullscreen, args.window_width, args.window_height)
+                last_window_image_size = None
             elif key == ord("["):
                 if args.camera_source == "webcam":
                     adjust_exposure(cap, camera_settings, -1.0)
@@ -668,7 +684,7 @@ def _configure_window(window_name: str, fullscreen: bool, width: int, height: in
 
 def _display_frame(frame, scale: float, width: int, height: int):
     if width > 0 and height > 0:
-        return cv2.resize(frame, (width, height), interpolation=cv2.INTER_LINEAR)
+        return _fit_frame_to_size(frame, width, height)
     if abs(scale - 1.0) < 1e-3:
         return frame
     target = (
@@ -676,6 +692,22 @@ def _display_frame(frame, scale: float, width: int, height: int):
         max(1, int(round(frame.shape[0] * scale))),
     )
     return cv2.resize(frame, target, interpolation=cv2.INTER_LINEAR)
+
+
+def _fit_frame_to_size(frame, width: int, height: int):
+    """Resize without changing aspect ratio, then pad to the requested canvas."""
+    src_h, src_w = frame.shape[:2]
+    if src_w <= 0 or src_h <= 0 or width <= 0 or height <= 0:
+        return frame
+    scale = min(width / src_w, height / src_h)
+    fit_w = max(1, int(round(src_w * scale)))
+    fit_h = max(1, int(round(src_h * scale)))
+    resized = cv2.resize(frame, (fit_w, fit_h), interpolation=cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR)
+    canvas = np.zeros((height, width, frame.shape[2]), dtype=frame.dtype)
+    x = (width - fit_w) // 2
+    y = (height - fit_h) // 2
+    canvas[y : y + fit_h, x : x + fit_w] = resized
+    return canvas
 
 
 def _rotate_frame(frame, rotation_degrees: int):
