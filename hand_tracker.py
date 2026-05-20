@@ -30,6 +30,8 @@ class HandLandmarks:
     label: str
     landmarks: List[Tuple[int, int, float]]
     normalized_landmarks: List[Tuple[float, float, float]]
+    tracking_source: str = "mediapipe"
+    missed_frames: int = 0
 
 
 class HandTracker:
@@ -55,6 +57,8 @@ class HandTracker:
         self._next_stable_hand_id = 0
         self._last_gray = None
         self._flow_points: Dict[Tuple[int, int], Tuple[float, float]] = {}
+        self._last_good_hands: List[HandLandmarks] = []
+        self._missed_frame_count = 0
 
         try:
             self._init_legacy_hands(
@@ -147,25 +151,36 @@ class HandTracker:
         return model_path
 
     def process(self, frame_bgr, roi: Optional[Tuple[int, int, int, int]] = None) -> List[HandLandmarks]:
-        prepared_frame, offset, scale = self._prepare_frame(frame_bgr, roi)
-        if self._backend == "tasks":
-            hands = self._process_tasks(prepared_frame, offset, scale)
-        else:
-            hands = self._process_legacy(prepared_frame, offset, scale)
+        hands = self._detect(frame_bgr, roi)
+        if not hands and roi is not None and config.TRACKING_FULL_FRAME_REACQUIRE:
+            hands = self._detect(frame_bgr, None)
+
         if not hands:
-            self._smoothed_points.clear()
-            self._tracked_hand_centers.clear()
-            self._flow_points.clear()
-            self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            return hands
+            bridged = self._bridge_missing_hands(frame_bgr)
+            if bridged:
+                return bridged
+            self._clear_after_miss(frame_bgr)
+            return []
+
+        self._missed_frame_count = 0
         hands = self._assign_stable_hand_ids(hands)
         hands = self._smooth(hands)
-        return self._stabilize_with_optical_flow(frame_bgr, hands)
+        hands = self._stabilize_with_optical_flow(frame_bgr, hands)
+        self._last_good_hands = self._copy_hands(hands)
+        return hands
+
+    def _detect(self, frame_bgr, roi: Optional[Tuple[int, int, int, int]] = None) -> List[HandLandmarks]:
+        prepared_frame, offset, scale = self._prepare_frame(frame_bgr, roi)
+        if self._backend == "tasks":
+            return self._process_tasks(prepared_frame, offset, scale)
+        return self._process_legacy(prepared_frame, offset, scale)
 
     def reset(self) -> None:
         self._smoothed_points.clear()
         self._tracked_hand_centers.clear()
         self._flow_points.clear()
+        self._last_good_hands = []
+        self._missed_frame_count = 0
         self._last_gray = None
 
     def _process_legacy(
@@ -225,6 +240,7 @@ class HandTracker:
                     label=label,
                     landmarks=pixels,
                     normalized_landmarks=normalized,
+                    tracking_source="tasks",
                 )
             )
         return hands
@@ -292,6 +308,8 @@ class HandTracker:
                     label=hand.label,
                     landmarks=smoothed_landmarks,
                     normalized_landmarks=hand.normalized_landmarks,
+                    tracking_source=hand.tracking_source,
+                    missed_frames=hand.missed_frames,
                 )
             )
         for key in list(self._smoothed_points):
@@ -336,6 +354,8 @@ class HandTracker:
                     label=detected.label,
                     landmarks=detected.landmarks,
                     normalized_landmarks=detected.normalized_landmarks,
+                    tracking_source=detected.tracking_source,
+                    missed_frames=detected.missed_frames,
                 )
             )
 
@@ -394,6 +414,8 @@ class HandTracker:
                     label=hand.label,
                     landmarks=stabilized_landmarks,
                     normalized_landmarks=hand.normalized_landmarks,
+                    tracking_source=hand.tracking_source,
+                    missed_frames=hand.missed_frames,
                 )
             )
 
@@ -401,21 +423,122 @@ class HandTracker:
         self._flow_points = next_flow_points
         return stabilized_hands
 
+    def _bridge_missing_hands(self, frame_bgr) -> List[HandLandmarks]:
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        if (
+            not config.TRACKING_BRIDGE_MISSED_FRAMES
+            or not config.FINGERTIP_OPTICAL_FLOW_STABILIZATION
+            or self._last_gray is None
+            or not self._last_good_hands
+            or not self._flow_points
+        ):
+            self._last_gray = gray
+            return []
+
+        self._missed_frame_count += 1
+        if self._missed_frame_count > config.TRACKING_BRIDGE_MAX_FRAMES:
+            self._clear_after_miss(frame_bgr)
+            return []
+
+        predictions = self._optical_flow_predictions_for_keys(
+            gray,
+            set(self._flow_points),
+            max_error=config.TRACKING_BRIDGE_MAX_FLOW_ERROR,
+        )
+        tracked_tip_count = sum(
+            1 for hand in self._last_good_hands for finger_id in config.TRIGGER_FINGER_IDS
+            if (hand.hand_id, finger_id) in predictions
+        )
+        if tracked_tip_count < max(1, min(config.TRACKING_BRIDGE_MIN_POINTS, len(config.TRIGGER_FINGER_IDS))):
+            self._clear_after_miss(frame_bgr)
+            return []
+
+        height, width = gray.shape[:2]
+        next_flow_points: Dict[Tuple[int, int], Tuple[float, float]] = {}
+        bridged_hands: List[HandLandmarks] = []
+
+        for hand in self._last_good_hands:
+            deltas: List[Tuple[float, float]] = []
+            for idx, (x, y, _) in enumerate(hand.landmarks):
+                key = (hand.hand_id, idx)
+                previous = self._flow_points.get(key)
+                prediction = predictions.get(key)
+                if previous is None or prediction is None:
+                    continue
+                px, py = self._limit_point_step(previous, prediction, config.TRACKING_BRIDGE_MAX_POINT_STEP_PX)
+                deltas.append((px - previous[0], py - previous[1]))
+
+            if deltas:
+                dx = sum(delta[0] for delta in deltas) / len(deltas)
+                dy = sum(delta[1] for delta in deltas) / len(deltas)
+            else:
+                dx = dy = 0.0
+
+            landmarks: List[Tuple[int, int, float]] = []
+            for idx, (x, y, z) in enumerate(hand.landmarks):
+                key = (hand.hand_id, idx)
+                previous = self._flow_points.get(key)
+                prediction = predictions.get(key)
+                if previous is not None and prediction is not None:
+                    sx, sy = self._limit_point_step(previous, prediction, config.TRACKING_BRIDGE_MAX_POINT_STEP_PX)
+                else:
+                    sx, sy = float(x) + dx, float(y) + dy
+                sx = float(np.clip(sx, 0, width - 1))
+                sy = float(np.clip(sy, 0, height - 1))
+                next_flow_points[key] = (sx, sy)
+                landmarks.append((int(round(sx)), int(round(sy)), z))
+
+            bridged_hands.append(
+                HandLandmarks(
+                    hand_id=hand.hand_id,
+                    label=hand.label,
+                    landmarks=landmarks,
+                    normalized_landmarks=hand.normalized_landmarks,
+                    tracking_source="optical_flow",
+                    missed_frames=self._missed_frame_count,
+                )
+            )
+
+        self._last_gray = gray
+        self._flow_points = next_flow_points
+        self._tracked_hand_centers = {
+            hand.hand_id: (*self._hand_center(hand.landmarks), hand.label)
+            for hand in bridged_hands
+        }
+        self._last_good_hands = self._copy_hands(bridged_hands)
+        return bridged_hands
+
+    def _clear_after_miss(self, frame_bgr) -> None:
+        self._smoothed_points.clear()
+        self._tracked_hand_centers.clear()
+        self._flow_points.clear()
+        self._last_good_hands = []
+        self._missed_frame_count = 0
+        self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+
     def _optical_flow_predictions(
         self,
         gray,
         hands: List[HandLandmarks],
     ) -> Dict[Tuple[int, int], Tuple[float, float]]:
-        keys = []
-        points = []
         current_keys = {
             (hand.hand_id, idx)
             for hand in hands
             for idx, _ in enumerate(hand.landmarks)
             if idx in config.OPTICAL_FLOW_LANDMARK_IDS
         }
+        return self._optical_flow_predictions_for_keys(gray, current_keys, config.OPTICAL_FLOW_MAX_ERROR)
+
+    def _optical_flow_predictions_for_keys(
+        self,
+        gray,
+        candidate_keys: set[Tuple[int, int]],
+        max_error: float,
+    ) -> Dict[Tuple[int, int], Tuple[float, float]]:
+        keys = []
+        points = []
         for key, point in self._flow_points.items():
-            if key in current_keys:
+            if key in candidate_keys:
                 keys.append(key)
                 points.append(point)
         if not points:
@@ -442,7 +565,7 @@ class HandTracker:
             if not flat_status[idx]:
                 continue
             error = float(flat_errors[idx])
-            if error > config.OPTICAL_FLOW_MAX_ERROR:
+            if error > max_error:
                 continue
             x, y = next_points[idx, 0]
             if 0 <= x < width and 0 <= y < height:
@@ -484,6 +607,19 @@ class HandTracker:
         xs = [point[0] for point in landmarks]
         ys = [point[1] for point in landmarks]
         return max(1.0, math.hypot(max(xs) - min(xs), max(ys) - min(ys)))
+
+    def _copy_hands(self, hands: List[HandLandmarks]) -> List[HandLandmarks]:
+        return [
+            HandLandmarks(
+                hand_id=hand.hand_id,
+                label=hand.label,
+                landmarks=list(hand.landmarks),
+                normalized_landmarks=list(hand.normalized_landmarks),
+                tracking_source=hand.tracking_source,
+                missed_frames=hand.missed_frames,
+            )
+            for hand in hands
+        ]
 
     def close(self) -> None:
         if self._hands is not None:

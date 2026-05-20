@@ -96,8 +96,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-fingertip-markers", action="store_true", help="Hide fingertip marker dots")
     parser.add_argument("--trigger-thumb", action="store_true", help="Allow thumb tips to trigger notes; enabled by default")
     parser.add_argument("--no-trigger-thumb", action="store_true", help="Disable thumb note triggers for unstable camera angles")
-    parser.add_argument("--min-detection-confidence", type=float, default=0.55, help="MediaPipe hand detection confidence")
-    parser.add_argument("--min-tracking-confidence", type=float, default=0.55, help="MediaPipe hand tracking confidence")
+    parser.add_argument("--min-detection-confidence", type=float, default=config.HAND_MIN_DETECTION_CONFIDENCE, help="MediaPipe hand detection confidence")
+    parser.add_argument("--min-tracking-confidence", type=float, default=config.HAND_MIN_TRACKING_CONFIDENCE, help="MediaPipe hand tracking confidence")
     parser.add_argument(
         "--piano-sensitivity",
         choices=["stable", "balanced", "sensitive"],
@@ -367,8 +367,9 @@ def main() -> int:
                 depth_estimator.calibrate(rgbd_frame, provisional_zones)
             depth_observations = depth_estimator.update(rgbd_frame, hands, zones) if depth_estimator is not None else {}
 
-            if hands:
-                gesture = gesture_recognizer.recognize(hands[0])
+            gesture_hands = [hand for hand in hands if getattr(hand, "tracking_source", "mediapipe") != "optical_flow"]
+            if gesture_hands:
+                gesture = gesture_recognizer.recognize(gesture_hands[0])
                 gesture_update = gesture_controller.update(gesture, current_time, loop_station)
             else:
                 gesture_update = gesture_controller.update(Gesture.UNKNOWN, current_time, loop_station)

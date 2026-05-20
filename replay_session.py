@@ -132,6 +132,8 @@ def _hand_from_dict(hand: Dict[str, object]):
         hand_id=int(hand["hand_id"]),
         label=str(hand.get("label", "Unknown")),
         landmarks=[tuple(point) for point in hand.get("landmarks", [])],
+        tracking_source=str(hand.get("tracking_source", "mediapipe")),
+        missed_frames=int(hand.get("missed_frames", 0)),
     )
 
 

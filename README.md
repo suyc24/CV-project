@@ -12,7 +12,7 @@ AirDesk Instrument 是一个基于普通电脑摄像头的桌面虚拟乐器原�
 - OpenCV 默认摄像头实时输入。
 - MediaPipe Hands 单手/双手关键点追踪。
 - Drum 模式：6 个虚拟鼓 pad：KICK、SNARE、HIHAT、TOM1、TOM2、CRASH。
-- Piano 模式：两组八度白键，C4 到 C6。
+- Piano 模式：7 个大白键，C4 到 B4。
 - Piano 模式使用程序生成的透视钢琴平面，默认贴在画面下方桌面区域。
 - 指尖抬起/下落状态机、落点区域、下落幅度、速度和 cooldown 联合判断有效敲击。
 - 速度到音量的相对力度映射。
@@ -95,17 +95,17 @@ python main.py --camera 0 --mode piano
 - `--auto-exposure`：重新启用摄像头自动曝光。
 - `--brightness/--contrast/--gain`：可选摄像头参数覆盖，不同摄像头支持程度不同。
 - `--enhance auto|clahe|none`：软件亮度/对比度增强，默认 `none`。画面调参时建议先保持 `none`，避免把噪声和过曝边缘拉爆。
-- `--tracking-max-width 416`：送入 MediaPipe 的最大图像宽度，越小越快但细节更少。
-- `--no-tracking-roi`：关闭桌面附近 ROI 追踪，改为整帧追踪。
+- `--tracking-max-width 416`：送入 MediaPipe 的最大图像宽度，越小越快但细节更少。检测不到手指时可以试 `480` 或 `640`。
+- `--no-tracking-roi`：关闭桌面附近 ROI 追踪，改为整帧追踪。默认模式会先查 ROI，失败时自动全帧重捕获。
 - `--landmark-smoothing-alpha 0.72`：landmark 时序平滑系数。越小越稳但越慢，越大越灵敏但越抖。
-- `--no-optical-stabilization`：关闭指尖光流稳定层。默认开启，用来抑制 MediaPipe 单帧跳点。
+- `--no-optical-stabilization`：关闭指尖光流稳定层和短时丢手桥接。默认开启，用来抑制 MediaPipe 单帧跳点。
 - `--piano-sensitivity stable|balanced|sensitive`：钢琴触发预设。默认 `stable` 更抗抖，`sensitive` 更容易触发轻敲。
 - `--max-hands 2`：最多追踪几只手。
 - `--no-hand-cutout`：不把真实手部抠回到钢琴图层上方，可换取更高 FPS。
 - `--no-fingertip-markers`：隐藏指尖圆点。
 - `--trigger-thumb`：允许拇指触发音符；当前默认已启用，保留这个参数用于兼容旧命令。
 - `--no-trigger-thumb`：关闭拇指触发。如果某个摄像头角度下拇指 landmark 抖动误触，可以临时使用。
-- `--min-detection-confidence 0.55` / `--min-tracking-confidence 0.55`：MediaPipe 手部检测/追踪置信度。
+- `--min-detection-confidence 0.45` / `--min-tracking-confidence 0.45`：MediaPipe 手部检测/追踪置信度。数值越低越容易找回手，但误检风险更高。
 - `--record-session data/sessions/test01`：保存可离线回放的 session 数据。
 - `--no-record-video`：只保存 landmarks/diagnostics JSONL，不保存 AVI 视频。
 - `--record3d-device 0`：Record3D 设备索引。
@@ -343,7 +343,7 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 - Piano 可视琴键默认覆盖整个底部演奏面。实际命中区域只比可视琴键略大，用来容忍边界误差。
 - Piano 使用 `lifting -> raised -> falling -> pressed` 状态机，更接近真实钢琴的“抬起、下落、触键”动作。
 - `lifting` 必须累计至少 `PIANO_ARM_MIN_LIFT_PX` 的抬起幅度才会进入可触发状态；`pressed` 后也要连续 `PIANO_RELEASE_STABLE_FRAMES` 帧满足抬起距离才会 release。这样可以过滤 MediaPipe 在手指贴近镜头或停在键盘上时的轻微抖动。
-- 如果还是触发困难，可以继续降低 `config.py` 中的 `PIANO_STRIKE_MIN_VELOCITY`，例如从 `110` 调到 `90`，或把 `PIANO_STRIKE_MIN_DROP_PX` 从 `18` 调到 `14`。
+- 如果还是触发困难，可以继续降低 `config.py` 中的 `PIANO_STRIKE_MIN_VELOCITY`，例如从当前默认 `95` 调到 `80`，或把 `PIANO_STRIKE_MIN_DROP_PX` 从当前默认 `16` 调到 `12`。
 - 如果误触发较多，优先增大 `PIANO_ARM_MIN_LIFT_PX` 或 `PIANO_RELEASE_STABLE_FRAMES`；其次再调高 `PIANO_STRIKE_MIN_VELOCITY`，或增大 `PIANO_STRIKE_MIN_DROP_PX` / `PIANO_RELEASE_LIFT_PX`。
 
 手势控制：
@@ -375,7 +375,7 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 
 为了减少指尖靠近镜头时的跳点，当前版本会先做稳定 hand id 分配，再对指尖和指根等关键点使用 OpenCV Lucas-Kanade 光流进行时序稳定：MediaPipe 给出粗位置，光流提供相邻帧连续运动估计；当二者差异过大时，系统会降低单帧 MediaPipe 点的权重。
 
-为了提高实时性，当前版本默认只把画面下方桌面附近 ROI 送入 MediaPipe，并把输入宽度限制到 `TRACKING_MAX_WIDTH`。检测结果会映射回原始画面坐标。landmarks 还会经过轻量时序平滑，减少指尖抖动。
+为了提高实时性，当前版本默认只把画面下方桌面附近 ROI 送入 MediaPipe，并把输入宽度限制到 `TRACKING_MAX_WIDTH`。如果 ROI 内没检测到手，会自动用整帧再跑一次重捕获。若 MediaPipe 连续少量帧丢手，系统会用上一帧 landmarks 的光流预测短暂桥接，最多 `TRACKING_BRIDGE_MAX_FRAMES` 帧；桥接帧仍可用于触键，但不会用于手势 loop 控制。
 
 ### Velocity-Sensitive Hit Detection
 

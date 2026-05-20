@@ -123,10 +123,10 @@ def test_perspective_key_mapping_uses_landing_x():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     detector = HitDetector()
     points = [
-        ((724, 551), "D5"),
-        ((801, 608), "E5"),
-        ((910, 569), "F5"),
-        ((418, 502), "G4"),
+        ((724, 551), "F4"),
+        ((801, 608), "G4"),
+        ((910, 569), "A4"),
+        ((418, 502), "E4"),
     ]
     for point, expected_label in points:
         zone = detector._zone_at(zones, point)
