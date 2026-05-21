@@ -134,8 +134,8 @@ class HitDetector:
                     continue
                 velocity_y = self._update_velocity(state, position, relative_y, current_time)
                 zone = self._zone_at(zones, position)
-                self._update_release_state(state, zone, y, relative_y)
                 depth_observation = (depth_observations or {}).get((hand.hand_id, finger_id))
+                self._update_release_state(state, zone, y, relative_y, depth_observation)
 
                 reason = self._miss_reason(
                     state,
@@ -325,7 +325,14 @@ class HitDetector:
             state.peak_relative_y = relative_y
         return state.smoothed_velocity_y
 
-    def _update_release_state(self, state: FingerState, zone: Optional[Zone], finger_y: int, relative_y: float) -> None:
+    def _update_release_state(
+        self,
+        state: FingerState,
+        zone: Optional[Zone],
+        finger_y: int,
+        relative_y: float,
+        depth_observation: Optional["DepthObservation"] = None,
+    ) -> None:
         if not state.is_pressed:
             return
         if zone is None:
@@ -382,7 +389,9 @@ class HitDetector:
                 self._motion_velocity(state) <= -config.PIANO_RELEASE_MIN_UP_VELOCITY
                 or lift_amount >= config.PIANO_RELEASE_LIFT_PX * config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER
             )
-            lifted_enough = lifted_enough and deliberate_lift
+            lifted_enough = lifted_enough and deliberate_lift and self._passes_release_motion_guard(state)
+            if lifted_enough and self._depth_still_contacting(depth_observation):
+                lifted_enough = False
             if lifted_enough:
                 state.release_ready_frames += 1
             else:
@@ -635,11 +644,39 @@ class HitDetector:
 
         return self._last_frame_drop(state) <= config.PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX
 
+    def _passes_release_motion_guard(self, state: FingerState) -> bool:
+        if len(state.recent_motion) < 2:
+            return False
+        net_lift = self._recent_net_lift(state)
+        if net_lift < config.PIANO_RELEASE_MIN_NET_LIFT_PX:
+            return False
+        return self._last_frame_lift(state) <= config.PIANO_RELEASE_MAX_SINGLE_FRAME_LIFT_PX
+
+    def _depth_still_contacting(self, observation: Optional["DepthObservation"]) -> bool:
+        if not config.PIANO_DEPTH_RELEASE_GUARD or config.DEPTH_CONTACT_MODE == "off":
+            return False
+        if config.DEPTH_CONTACT_MODE != "required" and not config.PIANO_DEPTH_RELEASE_GUARD_ASSIST:
+            return False
+        if observation is None:
+            return False
+        if observation.contact is True:
+            return True
+        height = observation.height_above_desk_m
+        if height is None:
+            return False
+        return height <= config.DEPTH_CONTACT_THRESHOLD_M
+
     def _recent_net_drop(self, state: FingerState) -> float:
         values = [entry[2] if config.PIANO_USE_RELATIVE_FINGER_MOTION else float(entry[1]) for entry in state.recent_motion]
         if not values:
             return 0.0
         return values[-1] - min(values)
+
+    def _recent_net_lift(self, state: FingerState) -> float:
+        values = [entry[2] if config.PIANO_USE_RELATIVE_FINGER_MOTION else float(entry[1]) for entry in state.recent_motion]
+        if not values:
+            return 0.0
+        return max(values) - values[-1]
 
     def _last_frame_drop(self, state: FingerState) -> float:
         if len(state.recent_motion) < 2:
@@ -649,6 +686,15 @@ class HitDetector:
         if config.PIANO_USE_RELATIVE_FINGER_MOTION:
             return current[2] - previous[2]
         return float(current[1] - previous[1])
+
+    def _last_frame_lift(self, state: FingerState) -> float:
+        if len(state.recent_motion) < 2:
+            return 0.0
+        previous = state.recent_motion[-2]
+        current = state.recent_motion[-1]
+        if config.PIANO_USE_RELATIVE_FINGER_MOTION:
+            return previous[2] - current[2]
+        return float(previous[1] - current[1])
 
     def _depth_contact_block_reason(self, observation: Optional["DepthObservation"]) -> Optional[str]:
         mode = config.DEPTH_CONTACT_MODE

@@ -587,15 +587,36 @@ class HandTracker:
         if next_points is None or status is None:
             return {}
 
+        backtrack_errors = np.zeros(len(keys), dtype=np.float32)
+        if config.OPTICAL_FLOW_FORWARD_BACKWARD_CHECK:
+            back_points, back_status, _ = cv2.calcOpticalFlowPyrLK(
+                gray,
+                self._last_gray,
+                next_points,
+                None,
+                winSize=(config.OPTICAL_FLOW_WINDOW_SIZE, config.OPTICAL_FLOW_WINDOW_SIZE),
+                maxLevel=config.OPTICAL_FLOW_MAX_LEVEL,
+                criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 16, 0.03),
+            )
+            if back_points is None or back_status is None:
+                return {}
+            back_status_flat = back_status.reshape(-1)
+            back_deltas = back_points.reshape(-1, 2) - previous_points.reshape(-1, 2)
+            backtrack_errors = np.linalg.norm(back_deltas, axis=1).astype(np.float32)
+        else:
+            back_status_flat = np.ones(len(keys), dtype=np.uint8)
+
         height, width = gray.shape[:2]
         predictions: Dict[Tuple[int, int], Tuple[float, float]] = {}
         flat_status = status.reshape(-1)
         flat_errors = errors.reshape(-1) if errors is not None else np.zeros(len(keys), dtype=np.float32)
         for idx, key in enumerate(keys):
-            if not flat_status[idx]:
+            if not flat_status[idx] or not back_status_flat[idx]:
                 continue
             error = float(flat_errors[idx])
             if error > max_error:
+                continue
+            if backtrack_errors[idx] > config.OPTICAL_FLOW_MAX_BACKTRACK_ERROR_PX:
                 continue
             x, y = next_points[idx, 0]
             if 0 <= x < width and 0 <= y < height:

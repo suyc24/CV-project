@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import config
 from hit_detector import HitDetector
 from instrument import InstrumentLayout
 
@@ -14,6 +15,10 @@ def hand_with_finger(hand_id: int, finger_id: int, x: int, y: int):
     landmarks = [(0, 0, 0.0)] * 21
     landmarks[finger_id] = (x, y, 0.0)
     return SimpleNamespace(hand_id=hand_id, landmarks=landmarks)
+
+
+def contact_observation():
+    return SimpleNamespace(contact=True, height_above_desk_m=0.0, reason="contact")
 
 
 def test_all_fingertips_can_trigger():
@@ -119,6 +124,31 @@ def test_clear_lift_allows_retrigger():
     assert len(hits) == 1
 
 
+def test_depth_contact_prevents_false_release_retrigger():
+    previous_mode = config.DEPTH_CONTACT_MODE
+    config.DEPTH_CONTACT_MODE = "required"
+    try:
+        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+        zone = zones[0]
+        detector = HitDetector()
+        x = zone.center[0]
+        y_start = zone.y1 + 5
+        y_hit = int(zone.y1 + zone.height * 0.78)
+        y_jitter_up = y_hit - 26
+        depth = {(0, 8): contact_observation()}
+
+        detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0, depth)
+        hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.05, depth)
+        assert len(hits) == 1
+
+        detector.update([hand_with_finger(0, 8, x, y_jitter_up)], zones, 100.25, depth)
+        detector.update([hand_with_finger(0, 8, x, y_jitter_up)], zones, 100.30, depth)
+        hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.38, depth)
+        assert not hits
+    finally:
+        config.DEPTH_CONTACT_MODE = previous_mode
+
+
 def test_perspective_key_mapping_uses_landing_x():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     detector = HitDetector()
@@ -142,5 +172,6 @@ if __name__ == "__main__":
     test_pressed_finger_jitter_does_not_retrigger()
     test_short_lift_before_drop_does_not_trigger()
     test_clear_lift_allows_retrigger()
+    test_depth_contact_prevents_false_release_retrigger()
     test_perspective_key_mapping_uses_landing_x()
     print("synthetic hit detector tests passed")

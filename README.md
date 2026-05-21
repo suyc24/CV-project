@@ -255,6 +255,12 @@ python main.py --camera 0 --backend dshow --mode piano --piano-sensitivity balan
 python main.py --camera 0 --backend dshow --mode piano --piano-sensitivity sensitive
 ```
 
+Record3D 已经校准深度后，如果手停在桌面上仍然因为 landmark 抖动误触，优先试更严格的深度模式。默认 `assist` 不会强制用 depth 判断 release，因为部分录像里 depth 会把真实抬指也看成 contact；`required` 会更稳但更挑桌面校准质量：
+
+```bash
+python main.py --camera-source record3d --mode piano --depth-contact-mode required --debug
+```
+
 如果内置摄像头照不到桌面，可以先用空中测试模式验证软件链路：
 
 ```bash
@@ -313,9 +319,19 @@ python replay_session.py data/sessions/test01
 
 ```bash
 python replay_session.py data/sessions/test01 --piano-strike-velocity 100 --piano-strike-drop 16
+python replay_session.py data/sessions/test01 --depth-contact-mode required --output-prefix replay_required
 ```
 
 回放会生成 `replay_hits.csv`、`replay_miss_reasons.csv` 和 `replay_summary.json`。
+
+外部数据集评测入口：
+
+```bash
+python tools/download_pianovam_sample.py --output data/external/pianovam
+python tools/evaluate_hit_events.py --pred data/sessions/test01/replay_hits.csv --gt data/external/pianovam/<labels>.tsv --gt-time-column onset --tolerance 0.08
+```
+
+当前优先参考 PianoVAM，因为它比普通手势数据集更接近“钢琴演奏视频 + 按键 onset 真值”。下载脚本默认只拉标签和手部骨架元数据；如果要拉原始视频，加 `--include-video`，但会明显占用带宽和磁盘。评测脚本做的是事件级 precision/recall/F1，不会假装用没有人工标注的测试视频算 99% 准确率。
 
 生成 HTML 分析报告：
 
@@ -374,9 +390,9 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 
 `hand_tracker.py` 使用 MediaPipe Hands 获取每只手的 21 个 landmarks，并把归一化坐标转换为像素坐标。UI 默认不绘制骨架线，而是用 landmarks 估计手部区域，把真实摄像头里的手抠回到钢琴图层上方，并用小圆点标出 10 个指尖。
 
-为了减少指尖靠近镜头时的跳点，当前版本会先做稳定 hand id 分配，再对指尖和指根等关键点使用 OpenCV Lucas-Kanade 光流进行时序稳定：MediaPipe 给出粗位置，光流提供相邻帧连续运动估计；当二者差异过大时，系统会降低单帧 MediaPipe 点的权重，并把对应 landmark 标记为不稳定，禁止这一帧触发音符。
+为了减少指尖靠近镜头时的跳点，当前版本会先做稳定 hand id 分配，再对指尖和指根等关键点使用 OpenCV Lucas-Kanade 光流进行时序稳定：MediaPipe 给出粗位置，光流提供相邻帧连续运动估计；光流还会做 forward-backward 一致性检查，过滤“前向能跟上、反向回不去”的不可靠点。当 MediaPipe 与光流差异过大时，系统会降低单帧 MediaPipe 点的权重，并把对应 landmark 标记为不稳定，禁止这一帧触发音符。
 
-为了提高实时性，当前版本默认只把画面下方桌面附近 ROI 送入 MediaPipe，并把输入宽度限制到 `TRACKING_MAX_WIDTH`。如果 ROI 内没检测到手，会自动用整帧再跑一次重捕获。若 MediaPipe 连续少量帧丢手，系统会用上一帧 landmarks 的光流预测短暂桥接，最多 `TRACKING_BRIDGE_MAX_FRAMES` 帧；桥接帧仍可用于触键，但不会用于手势 loop 控制。
+为了提高实时性，当前版本默认只把画面下方桌面附近 ROI 送入 MediaPipe，并把输入宽度限制到 `TRACKING_MAX_WIDTH`。如果 ROI 内没检测到手，会自动用整帧再跑一次重捕获。若 MediaPipe 连续少量帧丢手，系统会用上一帧 landmarks 的光流预测短暂桥接，最多 `TRACKING_BRIDGE_MAX_FRAMES` 帧；桥接帧只用于视觉连续性，不允许触发琴键或手势控制。
 
 ### Velocity-Sensitive Hit Detection
 
@@ -410,6 +426,7 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 - `strike_velocity`：下落距离够，但敲击速度不够。
 - `pressed`：还没有明显抬起，不能重复触发。
 - `cooldown`：距离上次触发太近。
+- `unstable_tracking`：该指尖刚丢失、刚重捕获，或与光流预测严重冲突。
 - `jitter_guard`：单帧跳点或净下落证据不足，本次候选触发被防抖层拦截。
 - `hit`：本帧触发成功。
 
@@ -439,7 +456,7 @@ velocity_y = (current_y - previous_y) / dt
 
 同一只手在同一帧里如果多个指尖都像是命中，会只保留分数最高的那个候选。这个仲裁可以减少“抬食指却触发到拇指对应键”的错配，但也会牺牲一点单手同帧和弦能力。
 
-hit 后进入 pressed 状态。只有当指尖明显抬起，或离开当前区域，才允许下一次触发。
+hit 后进入 pressed 状态。只有当指尖明显抬起，或离开当前区域，才允许下一次触发。Record3D 使用 `--depth-contact-mode required` 时，release 还会检查指尖是否仍然贴近桌面；如果 depth 认为还在接触，就不会因为 2D landmark 抖动而解除 pressed 状态。
 
 FPS 低时通常不是摄像头本身慢，而是实时管线里有几项很吃 CPU：MediaPipe 手部追踪、透视钢琴图层合成、手部抠图、debug 清晰度指标和 session 录制。当前版本已经缓存钢琴透视贴图、降低默认 MediaPipe 输入宽度、降低手部 mask 模糊半径，并让 debug 画质指标按间隔采样。如果仍然低于 20 FPS，优先尝试 `--max-hands 1 --tracking-max-width 360 --no-hand-cutout`。
 

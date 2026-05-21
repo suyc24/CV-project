@@ -22,6 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--piano-release-lift", type=float, default=None)
     parser.add_argument("--piano-arm-lift", type=float, default=None)
     parser.add_argument("--piano-release-stable-frames", type=int, default=None)
+    parser.add_argument("--depth-contact-mode", choices=["off", "assist", "required"], default=None)
+    parser.add_argument("--piano-depth-release-guard-assist", action="store_true")
     parser.add_argument("--piano-arm-ratio", type=float, default=None)
     parser.add_argument("--drum-velocity-threshold", type=float, default=None)
     parser.add_argument("--piano-press-ratio", type=float, default=None)
@@ -52,8 +54,9 @@ def main() -> int:
             frame_count += 1
             hands = [_hand_from_dict(hand) for hand in entry.get("hands", [])]
             zones = [_zone_from_dict(zone) for zone in entry.get("zones", [])]
+            depth_observations = _depth_observations_from_dict(entry.get("depth_observations", []))
             timestamp = float(entry.get("timestamp", entry.get("relative_time", 0.0)))
-            hits = detector.update(hands, zones, timestamp)
+            hits = detector.update(hands, zones, timestamp, depth_observations)
             online_hits += len(entry.get("hits", []))
             for diag in detector.diagnostics():
                 reason_counts[str(diag.get("reason", "unknown"))] += 1
@@ -84,6 +87,10 @@ def main() -> int:
             "PIANO_RELEASE_LIFT_PX": config.PIANO_RELEASE_LIFT_PX,
             "PIANO_RELEASE_MIN_UP_VELOCITY": config.PIANO_RELEASE_MIN_UP_VELOCITY,
             "PIANO_RELEASE_STRONG_LIFT_MULTIPLIER": config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER,
+            "PIANO_DEPTH_RELEASE_GUARD": config.PIANO_DEPTH_RELEASE_GUARD,
+            "PIANO_DEPTH_RELEASE_GUARD_ASSIST": config.PIANO_DEPTH_RELEASE_GUARD_ASSIST,
+            "PIANO_RELEASE_MIN_NET_LIFT_PX": config.PIANO_RELEASE_MIN_NET_LIFT_PX,
+            "PIANO_RELEASE_MAX_SINGLE_FRAME_LIFT_PX": config.PIANO_RELEASE_MAX_SINGLE_FRAME_LIFT_PX,
             "PIANO_JITTER_GUARD_ENABLED": config.PIANO_JITTER_GUARD_ENABLED,
             "PIANO_STRIKE_MIN_NET_DROP_PX": config.PIANO_STRIKE_MIN_NET_DROP_PX,
             "PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX": config.PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX,
@@ -96,6 +103,9 @@ def main() -> int:
             "PIANO_HIT_X_MARGIN_RATIO": config.PIANO_HIT_X_MARGIN_RATIO,
             "PIANO_HIT_TOP_MARGIN_RATIO": config.PIANO_HIT_TOP_MARGIN_RATIO,
             "PIANO_HIT_BOTTOM_MARGIN_RATIO": config.PIANO_HIT_BOTTOM_MARGIN_RATIO,
+            "DEPTH_CONTACT_MODE": config.DEPTH_CONTACT_MODE,
+            "OPTICAL_FLOW_FORWARD_BACKWARD_CHECK": config.OPTICAL_FLOW_FORWARD_BACKWARD_CHECK,
+            "OPTICAL_FLOW_MAX_BACKTRACK_ERROR_PX": config.OPTICAL_FLOW_MAX_BACKTRACK_ERROR_PX,
         },
     }
     (session_dir / f"{args.output_prefix}_summary.json").write_text(
@@ -120,6 +130,10 @@ def apply_overrides(args: argparse.Namespace) -> None:
         config.PIANO_ARM_MIN_LIFT_PX = args.piano_arm_lift
     if args.piano_release_stable_frames is not None:
         config.PIANO_RELEASE_STABLE_FRAMES = args.piano_release_stable_frames
+    if args.depth_contact_mode is not None:
+        config.DEPTH_CONTACT_MODE = args.depth_contact_mode
+    if args.piano_depth_release_guard_assist:
+        config.PIANO_DEPTH_RELEASE_GUARD_ASSIST = True
     if args.piano_arm_ratio is not None:
         config.PIANO_ARM_RATIO = args.piano_arm_ratio
     if args.drum_velocity_threshold is not None:
@@ -171,6 +185,56 @@ def _polygon_from_dict(zone: Dict[str, object]):
     if not polygon:
         return None
     return tuple((int(point[0]), int(point[1])) for point in polygon)
+
+
+def _depth_observations_from_dict(rows: object) -> Dict[tuple[int, int], SimpleNamespace]:
+    observations: Dict[tuple[int, int], SimpleNamespace] = {}
+    if not isinstance(rows, list):
+        return observations
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            hand_id = int(row["hand_id"])
+            finger_id = int(row["finger_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        observations[(hand_id, finger_id)] = SimpleNamespace(
+            hand_id=hand_id,
+            finger_id=finger_id,
+            x=int(row.get("x", 0) or 0),
+            y=int(row.get("y", 0) or 0),
+            finger_depth_m=_optional_float(row.get("finger_depth_m")),
+            desk_depth_m=_optional_float(row.get("desk_depth_m")),
+            height_above_desk_m=_optional_float(row.get("height_above_desk_m")),
+            contact=_optional_bool(row.get("contact")),
+            confidence=float(row.get("confidence", 0.0) or 0.0),
+            reason=str(row.get("reason", "")),
+        )
+    return observations
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_bool(value: object) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    return None
 
 
 def _hit_to_row(frame_index: int, hit: HitEvent) -> Dict[str, object]:
