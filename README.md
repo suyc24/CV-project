@@ -12,7 +12,7 @@ AirDesk Instrument 是一个基于普通电脑摄像头的桌面虚拟乐器原�
 - OpenCV 默认摄像头实时输入。
 - MediaPipe Hands 单手/双手关键点追踪。
 - Drum 模式：6 个虚拟鼓 pad：KICK、SNARE、HIHAT、TOM1、TOM2、CRASH。
-- Piano 模式：7 个大白键，C4 到 B4。
+- Piano 模式：10 个大白键，C4 到 E5。
 - Piano 模式使用程序生成的透视钢琴平面，默认贴在画面下方桌面区域。
 - 指尖抬起/下落状态机、落点区域、下落幅度、速度和 cooldown 联合判断有效敲击。
 - 速度到音量的相对力度映射。
@@ -83,6 +83,8 @@ python main.py --camera 0 --mode piano
 - `--display-scale 1.25`：放大 OpenCV 显示窗口，不改变检测坐标。
 - `--window-width/--window-height`：指定显示窗口尺寸。画面会等比例缩放并补黑边，不会强行拉伸。
 - `--fullscreen`：全屏显示。
+- `--paper-keyboard`：使用纸上画的琴键或 iPad 琴键作为真实可见键盘；Record3D 下不要求按 `d` 才生成 zones，并默认不显示虚拟琴键贴图。
+- `--hide-instrument-overlay`：隐藏虚拟鼓垫/琴键图层，但检测 zones 仍然工作并写入 session。
 - `--list-cameras`：列出当前系统可见的摄像头设备并退出。
 - `--calibrate-camera`：自动测试曝光/可选对焦，按画面清晰度和过曝比例保存 `camera_profile.json`。
 - `--camera-profile camera_profile.json`：读取/写入摄像头 profile。正常运行时如果该文件存在会自动加载。
@@ -329,10 +331,12 @@ python replay_session.py data/sessions/test01 --depth-contact-mode required --ou
 推荐先用 AirDesk 自己录 session，这样视频、每帧 hand landmarks、zones 和诊断信息都会在同一个目录里，后续我可以直接离线优化：
 
 ```bash
-python main.py --camera-source record3d --mode piano --debug --record-session data/sessions/ipad_test01
+python main.py --camera-source record3d --mode piano --paper-keyboard --debug --record-session data/sessions/ipad_test01
 ```
 
-如果你用别的软件录视频，也可以把视频放进 `data/sessions/ipad_test01/raw_video.avi`，但最好仍然用同一摄像机视角、同一 iPad 摆位。
+如果是在一张纸上画的琴键或 iPad 上的真实琴键，不需要按 `d` 做 depth 校准。`--paper-keyboard` 会继续记录 fallback piano zones 和手部 landmarks，但不会把虚拟琴键画到窗口里，避免挡住真实琴键。按 `d` 只适合你想用 Record3D depth 做接触判定、并让系统自动估计虚拟键盘平面时使用。
+
+如果你用别的软件录视频，也可以把视频放进 `data/sessions/ipad_test01/raw_video.avi`，但最好仍然用同一摄像机视角、同一纸面/iPad 摆位。
 
 最省事的标注方式是准备一个只有音符顺序的 score 文件，不需要写时间戳：
 
@@ -345,6 +349,9 @@ F4
 G4
 A4
 B4
+C5
+D5
+E5
 ```
 
 项目里有一个示例：[data/annotation_score_example.csv](/home/suyc24/Python/CV-project/data/annotation_score_example.csv)。
@@ -359,7 +366,7 @@ python tools/annotate_piano_video.py data/sessions/ipad_test01 --score data/sess
 
 - `space`：播放 / 暂停。
 - `Enter`：把当前帧标成 score 里的下一个音。
-- `1-7`：不用 score 时，直接标 C4、D4、E4、F4、G4、A4、B4。
+- `1-0`：不用 score 时，直接标 C4、D4、E4、F4、G4、A4、B4、C5、D5、E5。
 - `,` / `.`：前进 / 后退一帧。
 - `[` / `]`：后退 / 前进 1 秒。
 - `Backspace`、`u` 或 `z`：撤销上一个标注。

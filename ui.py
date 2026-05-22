@@ -38,10 +38,12 @@ def draw_scene(
     hit_detector: HitDetector,
     debug: bool = False,
     debug_lines: Optional[List[str]] = None,
+    draw_instrument_overlay: bool = True,
 ) -> None:
     camera_layer = frame.copy()
     hands = list(hands)
-    draw_zones(frame, zones, highlights, current_time)
+    if draw_instrument_overlay:
+        draw_zones(frame, zones, highlights, current_time)
     if config.HAND_CUTOUT_ENABLED and hands:
         draw_hand_cutouts(frame, camera_layer, hands)
     if config.SHOW_FINGERTIP_MARKERS and hands:

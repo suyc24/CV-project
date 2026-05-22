@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 
-DEFAULT_NOTES = ("C4", "D4", "E4", "F4", "G4", "A4", "B4")
+DEFAULT_NOTES = ("C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5")
 NUMBER_KEYS = "1234567890"
 
 cv2 = None
@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
         description=(
             "Simple video onset annotator for AirDesk piano tests. "
             "Open a video/session, pause near each key press, then press Enter "
-            "for the next score note or 1-7 to label notes directly."
+            "for the next score note or 1-0 to label C4-E5 directly."
         )
     )
     parser.add_argument("video_or_session", help="Video file, or an AirDesk session directory containing raw_video.avi")
@@ -329,7 +329,7 @@ def draw_overlay(
         f"{state}  t={time_s:.3f}s  frame={frame_index}/{total_text}  annotations={len(annotations)}",
         f"Next score note: {next_note}   Output: {output_path.name}",
         f"Direct keys: {format_note_keys(notes)}",
-        "Space play/pause | Enter mark next score note | 1-7 direct note | ,/. frame | [/ ] seek | Backspace undo | S save | Q quit",
+        "Space play/pause | Enter mark next score note | 1-0 direct note | ,/. frame | [/ ] seek | Backspace undo | S save | Q quit",
         message,
     ]
     y = 28

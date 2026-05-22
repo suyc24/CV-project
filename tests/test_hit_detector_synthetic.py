@@ -152,16 +152,11 @@ def test_depth_contact_prevents_false_release_retrigger():
 def test_perspective_key_mapping_uses_landing_x():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     detector = HitDetector()
-    points = [
-        ((724, 551), "F4"),
-        ((801, 608), "G4"),
-        ((910, 569), "A4"),
-        ((418, 502), "E4"),
-    ]
-    for point, expected_label in points:
+    for expected_zone in zones:
+        point = expected_zone.center
         zone = detector._zone_at(zones, point)
         assert zone is not None
-        assert zone.label == expected_label, f"{point} mapped to {zone.label}, expected {expected_label}"
+        assert zone.label == expected_zone.label, f"{point} mapped to {zone.label}, expected {expected_zone.label}"
 
 
 if __name__ == "__main__":

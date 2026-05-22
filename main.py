@@ -55,6 +55,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--window-height", type=int, default=config.DISPLAY_WINDOW_HEIGHT, help="Optional display window height")
     parser.add_argument("--fullscreen", action="store_true", help="Start in fullscreen display mode")
     parser.add_argument("--air-test", action="store_true", help="Move instrument ROI upward for testing with a laptop camera")
+    parser.add_argument(
+        "--paper-keyboard",
+        action="store_true",
+        help=(
+            "Use a real paper/iPad keyboard as the visible instrument. "
+            "Keeps piano zones active without requiring Record3D depth calibration "
+            "and hides the virtual keybed overlay by default."
+        ),
+    )
+    parser.add_argument(
+        "--hide-instrument-overlay",
+        action="store_true",
+        help="Do not draw virtual pads/keys. Detection zones remain active and recorded.",
+    )
     parser.add_argument("--instrument-roi", default=None, help="ROI ratios x1,y1,x2,y2 for pads/keys, e.g. 0.05,0.25,0.95,0.85")
     parser.add_argument("--list-cameras", action="store_true", help="List visible camera devices and exit")
     parser.add_argument("--calibrate-camera", action="store_true", help="Auto-tune exposure/focus and save camera_profile.json")
@@ -359,6 +373,7 @@ def main() -> int:
             hide_piano_until_calibrated = (
                 args.camera_source == "record3d"
                 and layout.mode == "piano"
+                and not args.paper_keyboard
                 and depth_estimator is not None
                 and (not depth_estimator.calibrated or depth_calibration_frames_remaining > 0)
             )
@@ -416,6 +431,7 @@ def main() -> int:
                 hit_detector=hit_detector,
                 debug=args.debug,
                 debug_lines=_debug_lines(frame_metrics_text, depth_estimator, depth_calibration_frames_remaining),
+                draw_instrument_overlay=not (args.hide_instrument_overlay or args.paper_keyboard),
             )
 
             output_frame = _display_frame(display_frame, display_scale, args.window_width, args.window_height)
@@ -579,7 +595,9 @@ def apply_runtime_tracking_config(args: argparse.Namespace) -> None:
         config.PIANO_RELEASE_MIN_UP_VELOCITY = 14.0
         config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER = 1.4
 
-    if args.depth_contact_mode == "auto":
+    if args.paper_keyboard and args.depth_contact_mode == "auto":
+        config.DEPTH_CONTACT_MODE = "off"
+    elif args.depth_contact_mode == "auto":
         config.DEPTH_CONTACT_MODE = "assist" if args.camera_source == "record3d" else "off"
     else:
         config.DEPTH_CONTACT_MODE = args.depth_contact_mode

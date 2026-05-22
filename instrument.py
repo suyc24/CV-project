@@ -54,7 +54,7 @@ class InstrumentLayout:
     """Builds simple screen-space drum pads or piano keys inside the desk ROI."""
 
     DRUM_LABELS = ["KICK", "SNARE", "HIHAT", "TOM1", "TOM2", "CRASH"]
-    PIANO_LABELS = ["C4", "D4", "E4", "F4", "G4", "A4", "B4"]
+    PIANO_LABELS = ["C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5", "D5", "E5"]
 
     def __init__(self, mode: str = "drum", roi_ratios: Tuple[float, float, float, float] | None = None) -> None:
         self.mode = mode
