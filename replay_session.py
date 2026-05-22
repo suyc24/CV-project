@@ -55,7 +55,7 @@ def main() -> int:
             hands = [_hand_from_dict(hand) for hand in entry.get("hands", [])]
             zones = [_zone_from_dict(zone) for zone in entry.get("zones", [])]
             depth_observations = _depth_observations_from_dict(entry.get("depth_observations", []))
-            timestamp = float(entry.get("timestamp", entry.get("relative_time", 0.0)))
+            timestamp = float(entry.get("relative_time", entry.get("timestamp", 0.0)))
             hits = detector.update(hands, zones, timestamp, depth_observations)
             online_hits += len(entry.get("hits", []))
             for diag in detector.diagnostics():

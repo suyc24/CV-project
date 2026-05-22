@@ -324,6 +324,68 @@ python replay_session.py data/sessions/test01 --depth-contact-mode required --ou
 
 回放会生成 `replay_hits.csv`、`replay_miss_reasons.csv` 和 `replay_summary.json`。
 
+## 视频标注流程
+
+推荐先用 AirDesk 自己录 session，这样视频、每帧 hand landmarks、zones 和诊断信息都会在同一个目录里，后续我可以直接离线优化：
+
+```bash
+python main.py --camera-source record3d --mode piano --debug --record-session data/sessions/ipad_test01
+```
+
+如果你用别的软件录视频，也可以把视频放进 `data/sessions/ipad_test01/raw_video.avi`，但最好仍然用同一摄像机视角、同一 iPad 摆位。
+
+最省事的标注方式是准备一个只有音符顺序的 score 文件，不需要写时间戳：
+
+```csv
+note
+C4
+D4
+E4
+F4
+G4
+A4
+B4
+```
+
+项目里有一个示例：[data/annotation_score_example.csv](/home/suyc24/Python/CV-project/data/annotation_score_example.csv)。
+
+打开标注器：
+
+```bash
+python tools/annotate_piano_video.py data/sessions/ipad_test01 --score data/sessions/ipad_test01/score.csv
+```
+
+标注器会播放 `raw_video.avi`，输出 `data/sessions/ipad_test01/annotations.csv`。操作很少：
+
+- `space`：播放 / 暂停。
+- `Enter`：把当前帧标成 score 里的下一个音。
+- `1-7`：不用 score 时，直接标 C4、D4、E4、F4、G4、A4、B4。
+- `,` / `.`：前进 / 后退一帧。
+- `[` / `]`：后退 / 前进 1 秒。
+- `Backspace`、`u` 或 `z`：撤销上一个标注。
+- `s`：保存。
+- `q`：保存并退出。
+
+生成标注后，先跑当前检测器：
+
+```bash
+python replay_session.py data/sessions/ipad_test01 --output-prefix baseline
+```
+
+再和人工标注对齐评测：
+
+```bash
+python tools/evaluate_hit_events.py \
+  --pred data/sessions/ipad_test01/baseline_hits.csv \
+  --gt data/sessions/ipad_test01/annotations.csv \
+  --gt-time-column onset \
+  --match-notes \
+  --tolerance 0.08 \
+  --output data/sessions/ipad_test01/baseline_eval.json
+```
+
+这会得到 precision、recall、F1、误触、漏触和平均时间误差。后续优化时我会用这个 `annotations.csv` 当标准答案，而不是凭肉眼猜。
+
 外部数据集评测入口：
 
 ```bash
