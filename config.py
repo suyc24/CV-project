@@ -108,6 +108,17 @@ OPTICAL_FLOW_OUTLIER_RAW_WEIGHT = 0.12
 OPTICAL_FLOW_OUTLIER_DISTANCE_PX = 32.0
 OPTICAL_FLOW_MAX_POINT_STEP_PX = 55.0
 
+# Experimental: local high-resolution fingertip refinement. MediaPipe provides
+# the coarse 21-point hand pose; this pass searches a small patch in the original
+# frame around each fingertip and nudges the point toward a strong distal edge.
+# Keep disabled by default until a recorded-session benchmark proves it helps.
+FINGERTIP_REFINEMENT_ENABLED = False
+FINGERTIP_REFINEMENT_RADIUS_PX = 22
+FINGERTIP_REFINEMENT_MAX_SHIFT_PX = 14
+FINGERTIP_REFINEMENT_MIN_EDGE_SCORE = 28.0
+FINGERTIP_REFINEMENT_BLEND_ALPHA = 0.45
+FINGERTIP_REFINEMENT_FORWARD_BIAS = 0.65
+
 HAND_LANDMARKER_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
     "hand_landmarker/float16/latest/hand_landmarker.task"

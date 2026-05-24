@@ -101,6 +101,7 @@ python main.py --camera 0 --mode piano
 - `--no-tracking-roi`：关闭桌面附近 ROI 追踪，改为整帧追踪。默认模式会先查 ROI，失败时自动全帧重捕获。
 - `--landmark-smoothing-alpha 0.72`：landmark 时序平滑系数。越小越稳但越慢，越大越灵敏但越抖。
 - `--no-optical-stabilization`：关闭指尖光流稳定层和短时丢手桥接。默认开启，用来抑制 MediaPipe 单帧跳点。
+- `--fingertip-refinement`：开启实验性的高分辨率局部指尖 refiner。它会在 MediaPipe 指尖附近的小 patch 里沿手指末端方向寻找强边缘，并在进入光流稳定层前轻微修正指尖位置。默认关闭，建议只在录制 session 对比时使用。
 - `--piano-sensitivity stable|balanced|sensitive`：钢琴触发预设。默认 `stable` 更抗抖，`sensitive` 更容易触发轻敲。
 - `--max-hands 2`：最多追踪几只手。
 - `--no-hand-cutout`：不把真实手部抠回到钢琴图层上方，可换取更高 FPS。
@@ -326,6 +327,29 @@ python replay_session.py data/sessions/test01 --depth-contact-mode required --ou
 
 回放会生成 `replay_hits.csv`、`replay_miss_reasons.csv` 和 `replay_summary.json`。
 
+追踪质量基准报告：
+
+```bash
+python tools/evaluate_tracking_quality.py data/sessions/test01
+```
+
+它会生成 `tracking_quality_summary.json` 和 `tracking_quality_per_finger.csv`，用于比较改动前后的指尖单帧跳动、`unstable_tracking`、同指快速重复触发和小位移 zone 抖动。测试实验性指尖 refiner 时，建议成对录制：
+
+```bash
+python main.py --camera 0 --backend dshow --mode piano --debug --record-session data/sessions/baseline_refine_off
+python main.py --camera 0 --backend dshow --mode piano --debug --fingertip-refinement --record-session data/sessions/refine_on
+python tools/evaluate_tracking_quality.py data/sessions/baseline_refine_off
+python tools/evaluate_tracking_quality.py data/sessions/refine_on
+```
+
+MediaPipe fork 准备脚本：
+
+```bash
+python tools/prepare_mediapipe_fork.py --dest third_party/mediapipe-fork
+```
+
+这个脚本只负责拉取源码并写入 AirDesk patch notes，不会自动安装本地 wheel。后续如果 `--fingertip-refinement` 在 session 指标上确实变好，再把 `fingertip_refiner.py` 的局部 patch/refine 逻辑移植成 MediaPipe C++ calculator，插到 hand landmark graph 输出后。
+
 ## 视频标注流程
 
 推荐先用 AirDesk 自己录 session，这样视频、每帧 hand landmarks、zones 和诊断信息都会在同一个目录里，后续我可以直接离线优化：
@@ -460,6 +484,8 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 `hand_tracker.py` 使用 MediaPipe Hands 获取每只手的 21 个 landmarks，并把归一化坐标转换为像素坐标。UI 默认不绘制骨架线，而是用 landmarks 估计手部区域，把真实摄像头里的手抠回到钢琴图层上方，并用小圆点标出 10 个指尖。
 
 为了减少指尖靠近镜头时的跳点，当前版本会先做稳定 hand id 分配，再对指尖和指根等关键点使用 OpenCV Lucas-Kanade 光流进行时序稳定：MediaPipe 给出粗位置，光流提供相邻帧连续运动估计；光流还会做 forward-backward 一致性检查，过滤“前向能跟上、反向回不去”的不可靠点。当 MediaPipe 与光流差异过大时，系统会降低单帧 MediaPipe 点的权重，并把对应 landmark 标记为不稳定，禁止这一帧触发音符。
+
+如果开启 `--fingertip-refinement`，系统会在光流稳定前额外运行一个实验性局部 refiner：以 MediaPipe 指尖为中心裁一小块原始高分辨率图像，沿指尖相对末端关节的方向寻找强边缘，只在局部证据足够强时把点向候选边缘轻微移动。这个逻辑目前先保留在本仓库，目的是用 session 指标证明有效后再迁移到 MediaPipe fork 的 graph/calculator 层。
 
 为了提高实时性，当前版本默认只把画面下方桌面附近 ROI 送入 MediaPipe，并把输入宽度限制到 `TRACKING_MAX_WIDTH`。如果 ROI 内没检测到手，会自动用整帧再跑一次重捕获。若 MediaPipe 连续少量帧丢手，系统会用上一帧 landmarks 的光流预测短暂桥接，最多 `TRACKING_BRIDGE_MAX_FRAMES` 帧；桥接帧只用于视觉连续性，不允许触发琴键或手势控制。
 

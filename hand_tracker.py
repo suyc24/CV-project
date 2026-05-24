@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 import config
+from fingertip_refiner import FingertipRefiner
 
 
 HAND_CONNECTIONS = (
@@ -44,6 +45,7 @@ class HandTracker:
         input_max_width: int = config.TRACKING_MAX_WIDTH,
         smooth_landmarks: bool = True,
         smoothing_alpha: float = config.LANDMARK_SMOOTHING_ALPHA,
+        refine_fingertips: bool = config.FINGERTIP_REFINEMENT_ENABLED,
     ) -> None:
         self._backend = ""
         self._hands = None
@@ -61,6 +63,18 @@ class HandTracker:
         self._last_good_hands: List[HandLandmarks] = []
         self._missed_frame_count = 0
         self._reacquire_guard_frames = 0
+        self._fingertip_refiner = (
+            FingertipRefiner(
+                finger_ids=config.TRIGGER_FINGER_IDS,
+                radius_px=config.FINGERTIP_REFINEMENT_RADIUS_PX,
+                max_shift_px=config.FINGERTIP_REFINEMENT_MAX_SHIFT_PX,
+                min_edge_score=config.FINGERTIP_REFINEMENT_MIN_EDGE_SCORE,
+                blend_alpha=config.FINGERTIP_REFINEMENT_BLEND_ALPHA,
+                forward_bias=config.FINGERTIP_REFINEMENT_FORWARD_BIAS,
+            )
+            if refine_fingertips
+            else None
+        )
 
         try:
             self._init_legacy_hands(
@@ -168,6 +182,7 @@ class HandTracker:
         self._missed_frame_count = 0
         hands = self._assign_stable_hand_ids(hands)
         hands = self._smooth(hands)
+        hands = self._refine_fingertips(frame_bgr, hands)
         hands = self._stabilize_with_optical_flow(frame_bgr, hands)
         if missed_before > 0:
             self._reacquire_guard_frames = max(
@@ -179,6 +194,25 @@ class HandTracker:
             self._reacquire_guard_frames -= 1
         self._last_good_hands = self._copy_hands(hands)
         return hands
+
+    def _refine_fingertips(self, frame_bgr, hands: List[HandLandmarks]) -> List[HandLandmarks]:
+        if self._fingertip_refiner is None:
+            return hands
+        refined_hands: List[HandLandmarks] = []
+        for hand in hands:
+            refined_landmarks = self._fingertip_refiner.refine_landmarks(frame_bgr, hand.landmarks)
+            refined_hands.append(
+                HandLandmarks(
+                    hand_id=hand.hand_id,
+                    label=hand.label,
+                    landmarks=refined_landmarks,
+                    normalized_landmarks=hand.normalized_landmarks,
+                    tracking_source=f"{hand.tracking_source}+refined",
+                    missed_frames=hand.missed_frames,
+                    unstable_landmark_ids=hand.unstable_landmark_ids,
+                )
+            )
+        return refined_hands
 
     def _detect(self, frame_bgr, roi: Optional[Tuple[int, int, int, int]] = None) -> List[HandLandmarks]:
         prepared_frame, offset, scale = self._prepare_frame(frame_bgr, roi)

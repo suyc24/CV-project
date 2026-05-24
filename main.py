@@ -105,6 +105,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-landmark-smoothing", action="store_true", help="Disable landmark temporal smoothing")
     parser.add_argument("--landmark-smoothing-alpha", type=float, default=config.LANDMARK_SMOOTHING_ALPHA, help="Landmark smoothing alpha")
     parser.add_argument("--no-optical-stabilization", action="store_true", help="Disable optical-flow fingertip stabilization")
+    parser.add_argument(
+        "--fingertip-refinement",
+        action="store_true",
+        help="Experimental high-resolution fingertip edge refinement before optical-flow stabilization",
+    )
     parser.add_argument("--max-hands", type=int, default=2, help="Maximum number of hands to track")
     parser.add_argument("--no-hand-cutout", action="store_true", help="Do not composite the real hand above the piano layer")
     parser.add_argument("--no-fingertip-markers", action="store_true", help="Hide fingertip marker dots")
@@ -268,6 +273,7 @@ def main() -> int:
             input_max_width=args.tracking_max_width,
             smooth_landmarks=not args.no_landmark_smoothing,
             smoothing_alpha=args.landmark_smoothing_alpha,
+            refine_fingertips=args.fingertip_refinement,
         )
     except RuntimeError as exc:
         print(f"Startup error: {exc}", file=sys.stderr)
