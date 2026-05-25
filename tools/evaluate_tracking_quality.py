@@ -46,6 +46,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--zone-jitter-step-px", type=float, default=18.0)
     parser.add_argument("--rapid-repeat-s", type=float, default=0.10)
     parser.add_argument("--min-samples", type=int, default=3)
+    parser.add_argument("--start-time", type=float, default=None, help="Ignore frames before this relative time in seconds")
+    parser.add_argument("--end-time", type=float, default=None, help="Ignore frames after this relative time in seconds")
+    parser.add_argument(
+        "--skip-uncalibrated-depth",
+        action="store_true",
+        help="Ignore frames whose depth_status is uncalibrated. Useful for Record3D sessions that include setup time.",
+    )
     return parser.parse_args()
 
 
@@ -57,7 +64,13 @@ def main() -> int:
         raise SystemExit(f"Missing {frames_path}")
 
     finger_ids = parse_int_list(args.finger_ids)
-    frames = load_jsonl(frames_path)
+    raw_frames = load_jsonl(frames_path)
+    frames = filter_frames(
+        raw_frames,
+        start_time=args.start_time,
+        end_time=args.end_time,
+        skip_uncalibrated_depth=args.skip_uncalibrated_depth,
+    )
     trajectories = collect_finger_samples(frames, finger_ids)
     per_finger = summarize_trajectories(
         trajectories,
@@ -71,6 +84,7 @@ def main() -> int:
     summary = {
         "session": str(session_dir),
         "frames": len(frames),
+        "raw_frames": len(raw_frames),
         "duration_s": session_duration(frames),
         "finger_ids": finger_ids,
         "overall": summarize_overall(per_finger),
@@ -81,6 +95,9 @@ def main() -> int:
             "zone_jitter_step_px": args.zone_jitter_step_px,
             "rapid_repeat_s": args.rapid_repeat_s,
             "min_samples": args.min_samples,
+            "start_time": args.start_time,
+            "end_time": args.end_time,
+            "skip_uncalibrated_depth": args.skip_uncalibrated_depth,
         },
     }
 
@@ -102,6 +119,25 @@ def load_jsonl(path: Path) -> list[dict]:
             if line.strip():
                 rows.append(json.loads(line))
     return rows
+
+
+def filter_frames(
+    frames: Iterable[dict],
+    start_time: Optional[float],
+    end_time: Optional[float],
+    skip_uncalibrated_depth: bool,
+) -> list[dict]:
+    filtered = []
+    for frame in frames:
+        time_s = float(frame.get("relative_time", frame.get("timestamp", 0.0)) or 0.0)
+        if start_time is not None and time_s < start_time:
+            continue
+        if end_time is not None and time_s > end_time:
+            continue
+        if skip_uncalibrated_depth and "uncalibrated" in str(frame.get("depth_status", "")).lower():
+            continue
+        filtered.append(frame)
+    return filtered
 
 
 def collect_finger_samples(frames: Iterable[dict], finger_ids: tuple[int, ...]) -> dict[tuple[int, int], list[FingerSample]]:

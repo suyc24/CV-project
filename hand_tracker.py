@@ -68,6 +68,7 @@ class HandTracker:
                 finger_ids=config.TRIGGER_FINGER_IDS,
                 radius_px=config.FINGERTIP_REFINEMENT_RADIUS_PX,
                 max_shift_px=config.FINGERTIP_REFINEMENT_MAX_SHIFT_PX,
+                max_perpendicular_shift_px=config.FINGERTIP_REFINEMENT_MAX_PERPENDICULAR_SHIFT_PX,
                 min_edge_score=config.FINGERTIP_REFINEMENT_MIN_EDGE_SCORE,
                 blend_alpha=config.FINGERTIP_REFINEMENT_BLEND_ALPHA,
                 forward_bias=config.FINGERTIP_REFINEMENT_FORWARD_BIAS,

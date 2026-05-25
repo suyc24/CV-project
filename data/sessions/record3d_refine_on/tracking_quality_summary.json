@@ -1,5 +1,5 @@
 {
-  "session": "data\\sessions\\record3d_refine_on",
+  "session": "data/sessions/record3d_refine_on",
   "frames": 268,
   "duration_s": 19.452481000043917,
   "finger_ids": [
@@ -12,7 +12,7 @@
   "overall": {
     "tracked_finger_streams": 20,
     "samples": 665,
-    "weighted_median_step_px": 1.9156299661527623,
+    "weighted_median_step_px": 1.9156299661527627,
     "weighted_p95_step_px": 16.859426620766722,
     "large_jump_count": 19,
     "unstable_sample_count": 12,

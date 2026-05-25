@@ -342,6 +342,15 @@ python tools/evaluate_tracking_quality.py data/sessions/baseline_refine_off
 python tools/evaluate_tracking_quality.py data/sessions/refine_on
 ```
 
+Record3D session 通常包含启动、旋转和按 `d` 前的未校准阶段。对比追踪质量时建议跳过这些帧：
+
+```bash
+python tools/evaluate_tracking_quality.py data/sessions/record3d_refine_off --skip-uncalibrated-depth
+python tools/evaluate_tracking_quality.py data/sessions/record3d_refine_on --skip-uncalibrated-depth
+```
+
+如果 refiner 版本的 `zone_jitter_switches` 或 `unstable_sample_count` 更高，说明局部边缘搜索被琴键/桌面边缘干扰，应先保持关闭。
+
 MediaPipe fork 准备脚本：
 
 ```bash

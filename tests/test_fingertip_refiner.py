@@ -25,6 +25,7 @@ def test_refiner_moves_tip_toward_strong_distal_edge():
         finger_ids=(8,),
         radius_px=18,
         max_shift_px=12,
+        max_perpendicular_shift_px=5,
         min_edge_score=5.0,
         blend_alpha=1.0,
     )
@@ -41,6 +42,25 @@ def test_refiner_leaves_blank_patch_unchanged():
         finger_ids=(8,),
         radius_px=18,
         max_shift_px=12,
+        max_perpendicular_shift_px=5,
+        min_edge_score=5.0,
+        blend_alpha=1.0,
+    )
+    landmarks = landmarks_with_index_tip(58, 50)
+
+    refined = refiner.refine_landmarks(frame, landmarks)
+
+    assert refined[8] == landmarks[8]
+
+
+def test_refiner_rejects_large_sideways_edge():
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+    cv2.rectangle(frame, (57, 62), (71, 69), (255, 255, 255), thickness=-1)
+    refiner = FingertipRefiner(
+        finger_ids=(8,),
+        radius_px=18,
+        max_shift_px=14,
+        max_perpendicular_shift_px=3,
         min_edge_score=5.0,
         blend_alpha=1.0,
     )
@@ -54,4 +74,5 @@ def test_refiner_leaves_blank_patch_unchanged():
 if __name__ == "__main__":
     test_refiner_moves_tip_toward_strong_distal_edge()
     test_refiner_leaves_blank_patch_unchanged()
+    test_refiner_rejects_large_sideways_edge()
     print("fingertip refiner tests passed")

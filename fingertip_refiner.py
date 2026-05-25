@@ -41,14 +41,16 @@ class FingertipRefiner:
         self,
         finger_ids: Iterable[int],
         radius_px: int = 22,
-        max_shift_px: int = 14,
-        min_edge_score: float = 28.0,
-        blend_alpha: float = 0.45,
+        max_shift_px: int = 8,
+        max_perpendicular_shift_px: int = 4,
+        min_edge_score: float = 36.0,
+        blend_alpha: float = 0.30,
         forward_bias: float = 0.65,
     ) -> None:
         self.finger_ids = tuple(finger_ids)
         self.radius_px = max(4, int(radius_px))
         self.max_shift_px = max(2, int(max_shift_px))
+        self.max_perpendicular_shift_px = max(1, int(max_perpendicular_shift_px))
         self.min_edge_score = float(min_edge_score)
         self.blend_alpha = min(1.0, max(0.0, float(blend_alpha)))
         self.forward_bias = max(0.0, float(forward_bias))
@@ -92,6 +94,11 @@ class FingertipRefiner:
 
         dx = candidate_x - float(x)
         dy = candidate_y - float(y)
+        parallel = dx * direction[0] + dy * direction[1]
+        perpendicular = abs(dx * direction[1] - dy * direction[0])
+        if parallel < -1.0 or perpendicular > self.max_perpendicular_shift_px:
+            return RefinedPoint(float(x), float(y), score, False)
+
         distance = math.hypot(dx, dy)
         if distance > self.max_shift_px:
             scale = self.max_shift_px / max(distance, 1e-6)
@@ -147,6 +154,7 @@ class FingertipRefiner:
         parallel = rel_x * dir_x + rel_y * dir_y
         perpendicular = np.abs(rel_x * dir_y - rel_y * dir_x)
         not_far_behind = parallel >= -0.45 * float(self.max_shift_px)
+        close_to_axis = perpendicular <= float(self.max_perpendicular_shift_px)
 
         front_bonus = 1.0 + self.forward_bias * np.clip(
             parallel / max(float(self.max_shift_px), 1.0),
@@ -156,7 +164,7 @@ class FingertipRefiner:
         center_weight = 1.0 / (1.0 + distance / max(float(self.radius_px) * 0.55, 1.0))
         axial_weight = np.exp(-perpendicular / max(float(self.radius_px) * 0.45, 1.0))
         score = gradient * front_bonus * center_weight * axial_weight
-        score = np.where(within_shift & not_far_behind, score, 0.0)
+        score = np.where(within_shift & not_far_behind & close_to_axis, score, 0.0)
 
         flat_idx = int(np.argmax(score))
         best_score = float(score.reshape(-1)[flat_idx])
