@@ -351,6 +351,28 @@ python tools/evaluate_tracking_quality.py data/sessions/record3d_refine_on --ski
 
 如果 refiner 版本的 `zone_jitter_switches` 或 `unstable_sample_count` 更高，说明局部边缘搜索被琴键/桌面边缘干扰，应先保持关闭。
 
+如果改的是 `HandTracker` 本身，旧 `frames.jsonl` 里的 landmarks 已经固定，单纯 `replay_session.py` 不能评估新 tracker。用已有 `raw_video.avi` 重新生成 landmarks：
+
+```bash
+python tools/reprocess_session_tracking.py data/sessions/record3d_refine_off --output-dir data/benchmarks/tracking/record3d_refine_off/baseline --variant baseline
+python tools/reprocess_session_tracking.py data/sessions/record3d_refine_off --output-dir data/benchmarks/tracking/record3d_refine_off/refined --variant refined --fingertip-refinement
+```
+
+也可以一键跑基准套件：
+
+```bash
+python tools/run_benchmark_suite.py data/sessions/record3d_refine_off data/sessions/record3d_refine_on --skip-uncalibrated-depth
+```
+
+默认量化目标是：
+
+- `weighted_p95_step_px <= 16`
+- `large_jumps_per_1000 <= 35`
+- `zone_jitter_per_1000 <= 20`
+- `rapid_same_finger_repeats == 0`
+
+这些工具需要和 `main.py` 相同的 Python 环境运行，也就是安装了 `mediapipe==0.10.21` 的 Python 3.10/3.11 环境。
+
 MediaPipe fork 准备脚本：
 
 ```bash
@@ -462,6 +484,7 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 - Piano 使用 `lifting -> raised -> falling -> pressed` 状态机，更接近真实钢琴的“抬起、下落、触键”动作。
 - `lifting` 必须累计至少 `PIANO_ARM_MIN_LIFT_PX` 的抬起幅度才会进入可触发状态；`pressed` 后也要连续 `PIANO_RELEASE_STABLE_FRAMES` 帧满足抬起距离才会 release。这样可以过滤 MediaPipe 在手指贴近镜头或停在键盘上时的轻微抖动。
 - 如果某个指尖点明显偏离光流预测，或刚从短暂丢手中恢复，系统会把该指尖标记为 `unstable_tracking`。这类帧不会更新下落状态，也不会触发琴键，避免把 MediaPipe 跳点当成敲击。
+- 新出现的手会先经历 `TRACKING_NEW_HAND_HIT_BLOCK_FRAMES` 帧 hit guard；如果画面里完全丢手后又重捕获，会使用更长的 `TRACKING_FULL_MISS_REACQUIRE_HIT_BLOCK_FRAMES`。这能过滤 Record3D 启动/按 `d` 校准/短暂丢手后 MediaPipe 重新锁定时的 settling jump。
 - 如果还是触发困难，可以继续降低 `config.py` 中的 `PIANO_STRIKE_MIN_VELOCITY`，例如从当前默认 `80` 调到 `70`，或把 `PIANO_STRIKE_MIN_DROP_PX` 从当前默认 `12` 调到 `10`。
 - 如果误触发较多，优先增大 `PIANO_ARM_MIN_LIFT_PX` 或 `PIANO_RELEASE_STABLE_FRAMES`；其次再调高 `PIANO_STRIKE_MIN_VELOCITY`，或增大 `PIANO_STRIKE_MIN_DROP_PX` / `PIANO_RELEASE_LIFT_PX`。
 

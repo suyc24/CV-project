@@ -62,7 +62,9 @@ class HandTracker:
         self._flow_points: Dict[Tuple[int, int], Tuple[float, float]] = {}
         self._last_good_hands: List[HandLandmarks] = []
         self._missed_frame_count = 0
+        self._empty_detection_frames = 0
         self._reacquire_guard_frames = 0
+        self._new_hand_guard_frames: Dict[int, int] = {}
         self._fingertip_refiner = (
             FingertipRefiner(
                 finger_ids=config.TRIGGER_FINGER_IDS,
@@ -176,23 +178,29 @@ class HandTracker:
             bridged = self._bridge_missing_hands(frame_bgr)
             if bridged:
                 return bridged
+            self._empty_detection_frames += 1
             self._clear_after_miss(frame_bgr)
             return []
 
-        missed_before = self._missed_frame_count
+        missed_before = max(self._missed_frame_count, self._empty_detection_frames)
+        full_miss_before = self._empty_detection_frames
         self._missed_frame_count = 0
+        self._empty_detection_frames = 0
         hands = self._assign_stable_hand_ids(hands)
         hands = self._smooth(hands)
         hands = self._refine_fingertips(frame_bgr, hands)
         hands = self._stabilize_with_optical_flow(frame_bgr, hands)
         if missed_before > 0:
+            guard_frames = (
+                config.TRACKING_FULL_MISS_REACQUIRE_HIT_BLOCK_FRAMES
+                if full_miss_before > 0
+                else config.TRACKING_REACQUIRE_HIT_BLOCK_FRAMES
+            )
             self._reacquire_guard_frames = max(
                 self._reacquire_guard_frames,
-                int(config.TRACKING_REACQUIRE_HIT_BLOCK_FRAMES),
+                int(guard_frames),
             )
-        if self._reacquire_guard_frames > 0:
-            hands = self._mark_unstable(hands, config.TRIGGER_FINGER_IDS)
-            self._reacquire_guard_frames -= 1
+        hands = self._apply_hit_guards(hands)
         self._last_good_hands = self._copy_hands(hands)
         return hands
 
@@ -227,7 +235,9 @@ class HandTracker:
         self._flow_points.clear()
         self._last_good_hands = []
         self._missed_frame_count = 0
+        self._empty_detection_frames = 0
         self._reacquire_guard_frames = 0
+        self._new_hand_guard_frames.clear()
         self._last_gray = None
 
     def _process_legacy(
@@ -402,6 +412,10 @@ class HandTracker:
             if best_id is None:
                 best_id = self._next_stable_hand_id
                 self._next_stable_hand_id += 1
+                self._new_hand_guard_frames[best_id] = max(
+                    self._new_hand_guard_frames.get(best_id, 0),
+                    int(config.TRACKING_NEW_HAND_HIT_BLOCK_FRAMES),
+                )
             used_previous.add(best_id)
             next_centers[best_id] = (center[0], center[1], detected.label)
             assigned.append(
@@ -485,6 +499,28 @@ class HandTracker:
         self._last_gray = gray
         self._flow_points = next_flow_points
         return stabilized_hands
+
+    def _apply_hit_guards(self, hands: List[HandLandmarks]) -> List[HandLandmarks]:
+        active_ids = {hand.hand_id for hand in hands}
+        guarded: List[HandLandmarks] = []
+        global_guard_active = self._reacquire_guard_frames > 0
+        for hand in hands:
+            hand_guard_active = self._new_hand_guard_frames.get(hand.hand_id, 0) > 0
+            if global_guard_active or hand_guard_active:
+                guarded.extend(self._mark_unstable([hand], config.TRIGGER_FINGER_IDS))
+            else:
+                guarded.append(hand)
+
+        if self._reacquire_guard_frames > 0:
+            self._reacquire_guard_frames -= 1
+
+        next_new_hand_guards: Dict[int, int] = {}
+        for hand_id in active_ids:
+            remaining = self._new_hand_guard_frames.get(hand_id, 0)
+            if remaining > 1:
+                next_new_hand_guards[hand_id] = remaining - 1
+        self._new_hand_guard_frames = next_new_hand_guards
+        return guarded
 
     def _bridge_missing_hands(self, frame_bgr) -> List[HandLandmarks]:
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -579,6 +615,7 @@ class HandTracker:
         self._last_good_hands = []
         self._missed_frame_count = 0
         self._reacquire_guard_frames = 0
+        self._new_hand_guard_frames.clear()
         self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
 
     def _optical_flow_predictions(
