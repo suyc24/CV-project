@@ -1,0 +1,14 @@
+reason,count
+not_armed,1673
+pressed,712
+lifting,648
+armed,566
+jitter_guard,230
+unstable_tracking,206
+short_drop,143
+velocity,51
+hit,21
+short_lift,15
+no_zone,5
+lifted,4
+suppressed_by_finger,1

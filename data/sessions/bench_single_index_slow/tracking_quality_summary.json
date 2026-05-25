@@ -1,0 +1,53 @@
+{
+  "session": "data/sessions/bench_single_index_slow",
+  "frames": 360,
+  "raw_frames": 360,
+  "duration_s": 26.96595459996024,
+  "finger_ids": [
+    4,
+    8,
+    12,
+    16,
+    20
+  ],
+  "overall": {
+    "tracked_finger_streams": 30,
+    "samples": 1665,
+    "weighted_median_step_px": 2.5272972306275294,
+    "weighted_p95_step_px": 9.988198406608534,
+    "large_jump_count": 54,
+    "unstable_sample_count": 84,
+    "zone_jitter_switches": 9
+  },
+  "hits": {
+    "total_hits": 6,
+    "rapid_same_finger_repeats": 0,
+    "rapid_repeat_s": 0.1,
+    "min_same_finger_interval_s": 4.7789634999935515,
+    "top_notes": {
+      "A4": 3,
+      "B4": 2,
+      "G4": 1
+    }
+  },
+  "diagnostic_reason_counts": {
+    "unstable_tracking": 104,
+    "armed": 88,
+    "lifting": 352,
+    "not_armed": 785,
+    "short_lift": 13,
+    "hit": 6,
+    "pressed": 331,
+    "short_drop": 5,
+    "lifted": 1
+  },
+  "parameters": {
+    "jump_threshold_px": 25.0,
+    "zone_jitter_step_px": 18.0,
+    "rapid_repeat_s": 0.1,
+    "min_samples": 3,
+    "start_time": null,
+    "end_time": null,
+    "skip_uncalibrated_depth": true
+  }
+}

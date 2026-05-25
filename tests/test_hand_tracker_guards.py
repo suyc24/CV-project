@@ -24,6 +24,8 @@ def make_hand(hand_id: int = 0) -> HandLandmarks:
 class FakeTracker(HandTracker):
     def __init__(self, detections):
         self.detections = list(detections)
+        self._max_num_hands = 2
+        self._frame_index = 0
         self._smoothed_points = {}
         self._tracked_hand_centers = {}
         self._next_stable_hand_id = 0
@@ -82,7 +84,18 @@ def test_full_miss_reacquire_gets_longer_guard():
     assert guarded[4] is False
 
 
+def test_partial_roi_detection_reacquires_full_frame_for_second_hand():
+    tracker = FakeTracker([[make_hand(0)], [make_hand(0), make_hand(1)]])
+    tracker._frame_index = 5
+    frame = np.zeros((80, 80, 3), dtype=np.uint8)
+
+    hands = tracker.process(frame, roi=(0, 20, 80, 80))
+
+    assert len(hands) == 2
+
+
 if __name__ == "__main__":
     test_new_hand_is_marked_unstable_for_guard_frames()
     test_full_miss_reacquire_gets_longer_guard()
+    test_partial_roi_detection_reacquires_full_frame_for_second_hand()
     print("hand tracker guard tests passed")

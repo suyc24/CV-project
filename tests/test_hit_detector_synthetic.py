@@ -21,6 +21,10 @@ def contact_observation():
     return SimpleNamespace(contact=True, height_above_desk_m=0.0, reason="contact")
 
 
+def air_observation():
+    return SimpleNamespace(contact=False, height_above_desk_m=0.12, reason="air")
+
+
 def test_all_fingertips_can_trigger():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     zone = zones[0]
@@ -135,18 +139,62 @@ def test_depth_contact_prevents_false_release_retrigger():
         y_start = zone.y1 + 5
         y_hit = int(zone.y1 + zone.height * 0.78)
         y_jitter_up = y_hit - 26
-        depth = {(0, 8): contact_observation()}
+        air_depth = {(0, 8): air_observation()}
+        contact_depth = {(0, 8): contact_observation()}
 
-        detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0, depth)
-        hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.05, depth)
+        detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0, air_depth)
+        hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.05, contact_depth)
         assert len(hits) == 1
 
-        detector.update([hand_with_finger(0, 8, x, y_jitter_up)], zones, 100.25, depth)
-        detector.update([hand_with_finger(0, 8, x, y_jitter_up)], zones, 100.30, depth)
-        hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.38, depth)
+        detector.update([hand_with_finger(0, 8, x, y_jitter_up)], zones, 100.25, contact_depth)
+        detector.update([hand_with_finger(0, 8, x, y_jitter_up)], zones, 100.30, contact_depth)
+        hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.38, contact_depth)
         assert not hits
     finally:
         config.DEPTH_CONTACT_MODE = previous_mode
+
+
+def test_depth_contact_blocks_passive_piano_arm():
+    previous = config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT
+    config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT = True
+    try:
+        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+        zone = zones[0]
+        detector = HitDetector()
+        x = zone.center[0]
+        y_start = zone.y1 + 5
+        y_hit = int(zone.y1 + zone.height * 0.78)
+        depth = {(0, 8): contact_observation()}
+
+        detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0, depth)
+        assert "contact_arm_guard" in [diag["reason"] for diag in detector.diagnostics()]
+        hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.05, depth)
+        assert not hits
+    finally:
+        config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT = previous
+
+
+def test_piano_zone_mapping_sticks_near_boundary():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    detector = HitDetector()
+    left_zone = zones[0]
+    y = left_zone.center[1]
+    assert left_zone.polygon is not None
+    top_edge = left_zone.polygon[1]
+    bottom_edge = left_zone.polygon[2]
+    edge_t = (y - top_edge[1]) / (bottom_edge[1] - top_edge[1])
+    boundary_x = top_edge[0] + edge_t * (bottom_edge[0] - top_edge[0])
+    x_left = int(boundary_x - 1)
+    x_right = int(boundary_x + 1)
+
+    detector.update([hand_with_finger(0, 8, x_left, y)], zones, 100.0)
+    detector.update([hand_with_finger(0, 8, x_right, y)], zones, 100.05)
+    zones_seen = [
+        diag["zone_label"]
+        for diag in detector.diagnostics()
+        if diag["hand_id"] == 0 and diag["finger_id"] == 8
+    ]
+    assert zones_seen == [left_zone.label]
 
 
 def test_perspective_key_mapping_uses_landing_x():
@@ -168,5 +216,7 @@ if __name__ == "__main__":
     test_short_lift_before_drop_does_not_trigger()
     test_clear_lift_allows_retrigger()
     test_depth_contact_prevents_false_release_retrigger()
+    test_depth_contact_blocks_passive_piano_arm()
+    test_piano_zone_mapping_sticks_near_boundary()
     test_perspective_key_mapping_uses_landing_x()
     print("synthetic hit detector tests passed")

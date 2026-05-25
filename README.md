@@ -324,6 +324,7 @@ python replay_session.py data/sessions/test01
 
 ```bash
 python replay_session.py data/sessions/test01 --piano-strike-velocity 100 --piano-strike-drop 16
+python replay_session.py data/sessions/test01 --piano-strike-net-drop 12 --output-prefix replay_net12
 python replay_session.py data/sessions/test01 --depth-contact-mode required --output-prefix replay_required
 ```
 
@@ -480,17 +481,18 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 
 钢琴触发灵敏度：
 
-- Piano 模式使用单独的触键状态机参数，主要包括 `PIANO_STRIKE_MIN_VELOCITY`、`PIANO_STRIKE_MIN_DROP_PX` 和 `PIANO_RELEASE_LIFT_PX`。
+- Piano 模式使用单独的触键状态机参数，主要包括 `PIANO_STRIKE_MIN_VELOCITY`、`PIANO_STRIKE_MIN_DROP_PX`、`PIANO_STRIKE_MIN_NET_DROP_PX` 和 `PIANO_RELEASE_LIFT_PX`。
 - Piano 会使用双手 10 个指尖：拇指、食指、中指、无名指、小指。
 - 拇指默认也能触发琴键。如果某个摄像头角度下拇指 landmark 抖动误触，可以加 `--no-trigger-thumb` 临时关闭。
 - Piano 不再要求指尖落到某条 contact line 以下；只要一次有效下落的落点位于琴键区域内，就可以触发。
 - Piano 可视琴键默认覆盖整个底部演奏面。实际命中区域只比可视琴键略大，用来容忍边界误差。
+- Piano 对相邻琴键边界有轻微粘滞：如果同一指尖只横向抖动几像素，会暂时保持上一帧的键区；真正下落敲击时仍按当前落点选键，避免边界防抖把实际弹奏改成旧键。
 - Piano 使用 `lifting -> raised -> falling -> pressed` 状态机，更接近真实钢琴的“抬起、下落、触键”动作。
-- `lifting` 必须累计至少 `PIANO_ARM_MIN_LIFT_PX` 的抬起幅度才会进入可触发状态；`pressed` 后也要连续 `PIANO_RELEASE_STABLE_FRAMES` 帧满足抬起距离才会 release。这样可以过滤 MediaPipe 在手指贴近镜头或停在键盘上时的轻微抖动。
+- `lifting` 必须累计至少 `PIANO_ARM_MIN_LIFT_PX` 的抬起幅度才会进入可触发状态；一次候选敲击还必须满足最近窗口内的净下落 `PIANO_STRIKE_MIN_NET_DROP_PX`。`pressed` 后也要连续 `PIANO_RELEASE_STABLE_FRAMES` 帧满足抬起距离才会 release。这样可以过滤 MediaPipe 在手指贴近镜头或停在键盘上时的轻微抖动。
 - 如果某个指尖点明显偏离光流预测，或刚从短暂丢手中恢复，系统会把该指尖标记为 `unstable_tracking`。这类帧不会更新下落状态，也不会触发琴键，避免把 MediaPipe 跳点当成敲击。
 - 新出现的手会先经历 `TRACKING_NEW_HAND_HIT_BLOCK_FRAMES` 帧 hit guard；如果画面里完全丢手后又重捕获，会使用更长的 `TRACKING_FULL_MISS_REACQUIRE_HIT_BLOCK_FRAMES`。这能过滤 Record3D 启动/按 `d` 校准/短暂丢手后 MediaPipe 重新锁定时的 settling jump。
 - 如果还是触发困难，可以继续降低 `config.py` 中的 `PIANO_STRIKE_MIN_VELOCITY`，例如从当前默认 `80` 调到 `70`，或把 `PIANO_STRIKE_MIN_DROP_PX` 从当前默认 `12` 调到 `10`。
-- 如果误触发较多，优先增大 `PIANO_ARM_MIN_LIFT_PX` 或 `PIANO_RELEASE_STABLE_FRAMES`；其次再调高 `PIANO_STRIKE_MIN_VELOCITY`，或增大 `PIANO_STRIKE_MIN_DROP_PX` / `PIANO_RELEASE_LIFT_PX`。
+- 如果误触发较多，优先增大 `PIANO_STRIKE_MIN_NET_DROP_PX`、`PIANO_ARM_MIN_LIFT_PX` 或 `PIANO_RELEASE_STABLE_FRAMES`；其次再调高 `PIANO_STRIKE_MIN_VELOCITY`，或增大 `PIANO_STRIKE_MIN_DROP_PX` / `PIANO_RELEASE_LIFT_PX`。
 
 手势控制：
 
@@ -524,6 +526,8 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 如果开启 `--fingertip-refinement`，系统会在光流稳定前额外运行一个实验性局部 refiner：以 MediaPipe 指尖为中心裁一小块原始高分辨率图像，沿指尖相对末端关节的方向寻找强边缘，只在局部证据足够强时把点向候选边缘轻微移动。这个逻辑目前先保留在本仓库，目的是用 session 指标证明有效后再迁移到 MediaPipe fork 的 graph/calculator 层。
 
 为了提高实时性，当前版本默认只把画面下方桌面附近 ROI 送入 MediaPipe，并把输入宽度限制到 `TRACKING_MAX_WIDTH`。如果 ROI 内没检测到手，会自动用整帧再跑一次重捕获。若 MediaPipe 连续少量帧丢手，系统会用上一帧 landmarks 的光流预测短暂桥接，最多 `TRACKING_BRIDGE_MAX_FRAMES` 帧；桥接帧只用于视觉连续性，不允许触发琴键或手势控制。
+
+双手模式下，如果 ROI 里只检测到一只手，系统会每隔 `TRACKING_PARTIAL_REACQUIRE_INTERVAL_FRAMES` 帧做一次全帧补查；如果全帧能看到更多手，就切换到全帧结果。这避免“一只手已在桌面 ROI 内，所以另一只刚进入画面上方的手一直找不到”的情况。如果仍然漏第二只手，可以临时用 `--no-tracking-roi` 验证是否是 ROI 问题。
 
 ### Velocity-Sensitive Hit Detection
 
@@ -559,6 +563,7 @@ python extract_session_frames.py data/sessions/test02 --count 5 --include-hit-fr
 - `cooldown`：距离上次触发太近。
 - `unstable_tracking`：该指尖刚丢失、刚重捕获，或与光流预测严重冲突。
 - `jitter_guard`：单帧跳点或净下落证据不足，本次候选触发被防抖层拦截。
+- `contact_arm_guard`：可选的深度防护阻止“已经贴近键面”的指尖仅凭位置被动进入 armed。
 - `hit`：本帧触发成功。
 
 核心速度计算：
@@ -580,6 +585,7 @@ velocity_y = (current_y - previous_y) / dt
 - 指尖位于某个 pad/key 区域内；
 - 指尖先出现抬起/armed 或正在向下落；
 - 下落位移超过 `PIANO_STRIKE_MIN_DROP_PX`；
+- 最近运动窗口内的净下落超过 `PIANO_STRIKE_MIN_NET_DROP_PX`；
 - 下落速度超过 `PIANO_STRIKE_MIN_VELOCITY`；
 - 当前落点位于某个琴键 polygon 内；
 - 当前指尖未处于 pressed 状态；

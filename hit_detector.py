@@ -49,6 +49,7 @@ class FingerState:
     peak_relative_y: Optional[float] = None
     max_down_velocity: float = 0.0
     max_down_relative_velocity: float = 0.0
+    last_zone_id: Optional[str] = None
     recent_motion: Deque[Tuple[float, int, float]] = field(default_factory=lambda: deque(maxlen=8))
     trail: Deque[Tuple[int, int]] = field(default_factory=lambda: deque(maxlen=config.TRAIL_LENGTH))
 
@@ -104,7 +105,7 @@ class HitDetector:
                 unstable_tracking = self._finger_tracking_unstable(hand, finger_id)
                 if unstable_tracking:
                     velocity_y = self._observe_unstable_tracking(state, position, relative_y, current_time)
-                    zone = self._zone_at(zones, position)
+                    zone = self._zone_for_state(zones, position, state, previous_position)
                     depth_observation = (depth_observations or {}).get((hand.hand_id, finger_id))
                     self._diagnostics.append(
                         {
@@ -133,7 +134,7 @@ class HitDetector:
                     )
                     continue
                 velocity_y = self._update_velocity(state, position, relative_y, current_time)
-                zone = self._zone_at(zones, position)
+                zone = self._zone_for_state(zones, position, state, previous_position)
                 depth_observation = (depth_observations or {}).get((hand.hand_id, finger_id))
                 self._update_release_state(state, zone, y, relative_y, depth_observation)
 
@@ -350,6 +351,7 @@ class HitDetector:
             state.peak_relative_y = None
             state.max_down_velocity = 0.0
             state.max_down_relative_velocity = 0.0
+            state.last_zone_id = None
             return
         if state.pressed_zone_id and zone.sound_id != state.pressed_zone_id and zone.kind != "piano":
             state.is_pressed = False
@@ -366,6 +368,7 @@ class HitDetector:
             state.peak_relative_y = None
             state.max_down_velocity = 0.0
             state.max_down_relative_velocity = 0.0
+            state.last_zone_id = None
             return
         if zone.kind == "piano":
             if config.PIANO_USE_RELATIVE_FINGER_MOTION:
@@ -411,6 +414,7 @@ class HitDetector:
                 state.peak_relative_y = relative_y
                 state.max_down_velocity = 0.0
                 state.max_down_relative_velocity = 0.0
+                state.last_zone_id = zone.sound_id
             return
         if finger_y < zone.release_y:
             state.is_pressed = False
@@ -427,6 +431,7 @@ class HitDetector:
             state.peak_relative_y = relative_y
             state.max_down_velocity = 0.0
             state.max_down_relative_velocity = 0.0
+            state.last_zone_id = zone.sound_id
 
     def _is_hit_candidate(
         self,
@@ -520,10 +525,13 @@ class HitDetector:
                 state.peak_relative_y = motion_y if state.peak_relative_y is None else min(state.peak_relative_y, motion_y)
 
             lift_px = self._lift_distance(state, finger_y, relative_y)
-            if lift_px >= config.PIANO_ARM_MIN_LIFT_PX or finger_y <= arm_y:
+            passive_arm_allowed = not self._depth_blocks_passive_arm(depth_observation)
+            if lift_px >= config.PIANO_ARM_MIN_LIFT_PX or (finger_y <= arm_y and passive_arm_allowed):
                 state.motion_state = "raised"
                 state.falling_frames = 0
                 return "armed"
+            if finger_y <= arm_y and not passive_arm_allowed:
+                return "contact_arm_guard"
             if motion_velocity > config.PIANO_FALLING_VELOCITY_THRESHOLD:
                 state.motion_state = "idle"
                 state.armed_zone_id = None
@@ -568,6 +576,17 @@ class HitDetector:
             state.max_down_relative_velocity = max(state.max_down_relative_velocity, motion_velocity)
 
         if finger_y <= arm_y and state.motion_state != "falling":
+            if self._depth_blocks_passive_arm(depth_observation):
+                state.motion_state = "idle"
+                state.armed_zone_id = None
+                state.lift_start_y = None
+                state.lift_start_relative_y = None
+                state.falling_frames = 0
+                state.peak_y = None
+                state.peak_relative_y = None
+                state.max_down_velocity = 0.0
+                state.max_down_relative_velocity = 0.0
+                return "contact_arm_guard"
             state.motion_state = "raised"
             state.armed_zone_id = zone.sound_id
             state.lift_start_y = None
@@ -665,6 +684,16 @@ class HitDetector:
         if height is None:
             return False
         return height <= config.DEPTH_CONTACT_THRESHOLD_M
+
+    def _depth_blocks_passive_arm(self, observation: Optional["DepthObservation"]) -> bool:
+        if not config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT or config.DEPTH_CONTACT_MODE == "off":
+            return False
+        if observation is None:
+            return False
+        height = observation.height_above_desk_m
+        if height is not None:
+            return height <= config.PIANO_PASSIVE_ARM_MAX_CONTACT_HEIGHT_M
+        return observation.contact is True
 
     def _recent_net_drop(self, state: FingerState) -> float:
         values = [entry[2] if config.PIANO_USE_RELATIVE_FINGER_MOTION else float(entry[1]) for entry in state.recent_motion]
@@ -799,9 +828,59 @@ class HitDetector:
             return min(piano_candidates, key=lambda zone: abs(zone.center[0] - x))
         return None
 
+    def _zone_for_state(
+        self,
+        zones: Iterable[Zone],
+        point: Tuple[int, int],
+        state: FingerState,
+        previous_position: Optional[Tuple[int, int]],
+    ) -> Optional[Zone]:
+        zone_list = list(zones)
+        current = self._zone_at(zone_list, point)
+        sticky = self._sticky_piano_zone(zone_list, point, state, previous_position, current)
+        selected = sticky or current
+        state.last_zone_id = selected.sound_id if selected else None
+        return selected
+
+    def _sticky_piano_zone(
+        self,
+        zones: Iterable[Zone],
+        point: Tuple[int, int],
+        state: FingerState,
+        previous_position: Optional[Tuple[int, int]],
+        current: Optional[Zone],
+    ) -> Optional[Zone]:
+        if not config.PIANO_ZONE_STICKY_ENABLED or previous_position is None or not state.last_zone_id:
+            return None
+        if state.motion_state == "falling" or self._motion_velocity(state) > config.PIANO_FALLING_VELOCITY_THRESHOLD:
+            return None
+        if current is not None and current.kind != "piano":
+            return None
+        previous_zone = next((zone for zone in zones if zone.sound_id == state.last_zone_id), None)
+        if previous_zone is None or previous_zone.kind != "piano":
+            return None
+        if current is not None and current.sound_id == previous_zone.sound_id:
+            return None
+        step_x = abs(point[0] - previous_position[0])
+        if step_x > config.PIANO_ZONE_STICKY_MAX_STEP_PX:
+            return None
+        if self._contains_with_piano_sticky_margin(previous_zone, point):
+            return previous_zone
+        return None
+
     def _contains_with_piano_margin(self, zone: Zone, point: Tuple[int, int]) -> bool:
         x, y = point
         x_margin = zone.width * config.PIANO_HIT_X_MARGIN_RATIO
+        top_margin = zone.height * config.PIANO_HIT_TOP_MARGIN_RATIO
+        bottom_margin = zone.height * config.PIANO_HIT_BOTTOM_MARGIN_RATIO
+        return (
+            zone.x1 - x_margin <= x <= zone.x2 + x_margin
+            and zone.y1 - top_margin <= y <= zone.y2 + bottom_margin
+        )
+
+    def _contains_with_piano_sticky_margin(self, zone: Zone, point: Tuple[int, int]) -> bool:
+        x, y = point
+        x_margin = zone.width * config.PIANO_ZONE_STICKY_X_MARGIN_RATIO
         top_margin = zone.height * config.PIANO_HIT_TOP_MARGIN_RATIO
         bottom_margin = zone.height * config.PIANO_HIT_BOTTOM_MARGIN_RATIO
         return (

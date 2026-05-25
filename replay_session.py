@@ -19,6 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--piano-velocity-threshold", type=float, default=None)
     parser.add_argument("--piano-strike-velocity", type=float, default=None)
     parser.add_argument("--piano-strike-drop", type=float, default=None)
+    parser.add_argument("--piano-strike-net-drop", type=float, default=None)
     parser.add_argument("--piano-release-lift", type=float, default=None)
     parser.add_argument("--piano-arm-lift", type=float, default=None)
     parser.add_argument("--piano-release-stable-frames", type=int, default=None)
@@ -94,6 +95,8 @@ def main() -> int:
             "PIANO_JITTER_GUARD_ENABLED": config.PIANO_JITTER_GUARD_ENABLED,
             "PIANO_STRIKE_MIN_NET_DROP_PX": config.PIANO_STRIKE_MIN_NET_DROP_PX,
             "PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX": config.PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX,
+            "PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT": config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT,
+            "PIANO_PASSIVE_ARM_MAX_CONTACT_HEIGHT_M": config.PIANO_PASSIVE_ARM_MAX_CONTACT_HEIGHT_M,
             "PIANO_HIT_MIN_VELOCITY": config.PIANO_HIT_MIN_VELOCITY,
             "PIANO_HIT_MAX_VELOCITY": config.PIANO_HIT_MAX_VELOCITY,
             "PIANO_MIN_VOLUME": config.PIANO_MIN_VOLUME,
@@ -103,6 +106,9 @@ def main() -> int:
             "PIANO_HIT_X_MARGIN_RATIO": config.PIANO_HIT_X_MARGIN_RATIO,
             "PIANO_HIT_TOP_MARGIN_RATIO": config.PIANO_HIT_TOP_MARGIN_RATIO,
             "PIANO_HIT_BOTTOM_MARGIN_RATIO": config.PIANO_HIT_BOTTOM_MARGIN_RATIO,
+            "PIANO_ZONE_STICKY_ENABLED": config.PIANO_ZONE_STICKY_ENABLED,
+            "PIANO_ZONE_STICKY_X_MARGIN_RATIO": config.PIANO_ZONE_STICKY_X_MARGIN_RATIO,
+            "PIANO_ZONE_STICKY_MAX_STEP_PX": config.PIANO_ZONE_STICKY_MAX_STEP_PX,
             "DEPTH_CONTACT_MODE": config.DEPTH_CONTACT_MODE,
             "OPTICAL_FLOW_FORWARD_BACKWARD_CHECK": config.OPTICAL_FLOW_FORWARD_BACKWARD_CHECK,
             "OPTICAL_FLOW_MAX_BACKTRACK_ERROR_PX": config.OPTICAL_FLOW_MAX_BACKTRACK_ERROR_PX,
@@ -127,6 +133,8 @@ def apply_overrides(args: argparse.Namespace) -> None:
         config.PIANO_STRIKE_MIN_VELOCITY = args.piano_strike_velocity
     if args.piano_strike_drop is not None:
         config.PIANO_STRIKE_MIN_DROP_PX = args.piano_strike_drop
+    if args.piano_strike_net_drop is not None:
+        config.PIANO_STRIKE_MIN_NET_DROP_PX = args.piano_strike_net_drop
     if args.piano_release_lift is not None:
         config.PIANO_RELEASE_LIFT_PX = args.piano_release_lift
     if args.piano_arm_lift is not None:

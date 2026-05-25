@@ -51,7 +51,9 @@ class HandTracker:
         self._hands = None
         self._landmarker = None
         self._mp = None
+        self._max_num_hands = max(1, int(max_num_hands))
         self._last_timestamp_ms = 0
+        self._frame_index = 0
         self._input_max_width = input_max_width
         self._smooth_landmarks = smooth_landmarks
         self._smoothing_alpha = smoothing_alpha
@@ -170,9 +172,14 @@ class HandTracker:
         return model_path
 
     def process(self, frame_bgr, roi: Optional[Tuple[int, int, int, int]] = None) -> List[HandLandmarks]:
+        self._frame_index += 1
         hands = self._detect(frame_bgr, roi)
         if not hands and roi is not None and config.TRACKING_FULL_FRAME_REACQUIRE:
             hands = self._detect(frame_bgr, None)
+        elif roi is not None and 0 < len(hands) < self._max_num_hands and self._should_partial_full_frame_reacquire():
+            full_frame_hands = self._detect(frame_bgr, None)
+            if len(full_frame_hands) > len(hands):
+                hands = full_frame_hands
 
         if not hands:
             bridged = self._bridge_missing_hands(frame_bgr)
@@ -203,6 +210,12 @@ class HandTracker:
         hands = self._apply_hit_guards(hands)
         self._last_good_hands = self._copy_hands(hands)
         return hands
+
+    def _should_partial_full_frame_reacquire(self) -> bool:
+        if not config.TRACKING_PARTIAL_FULL_FRAME_REACQUIRE:
+            return False
+        interval = max(1, int(config.TRACKING_PARTIAL_REACQUIRE_INTERVAL_FRAMES))
+        return self._frame_index % interval == 0
 
     def _refine_fingertips(self, frame_bgr, hands: List[HandLandmarks]) -> List[HandLandmarks]:
         if self._fingertip_refiner is None:
