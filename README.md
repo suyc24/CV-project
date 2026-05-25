@@ -111,6 +111,8 @@ python main.py --camera 0 --mode piano
 - `--min-detection-confidence 0.45` / `--min-tracking-confidence 0.45`：MediaPipe 手部检测/追踪置信度。数值越低越容易找回手，但误检风险更高。
 - `--record-session data/sessions/test01`：保存可离线回放的 session 数据。
 - `--no-record-video`：只保存 landmarks/diagnostics JSONL，不保存 AVI 视频。
+- `--record-immediately`：Record3D + Piano 下默认会等按 `d` 完成 depth 校准并稳定若干帧后才开始写 session；加这个参数会恢复为程序启动后立即录制。
+- `--record-start-stable-frames 8`：Record3D depth 校准完成后再等待多少帧才开始录制，默认 `8`。
 - `--record3d-device 0`：Record3D 设备索引。
 - `--record3d-rotate 0|90|180|270`：旋转 Record3D 画面，用来适配手机横竖屏安装方向。
 - `--record3d-mirror`：水平镜像 Record3D 画面。
@@ -388,6 +390,8 @@ python tools/prepare_mediapipe_fork.py --dest third_party/mediapipe-fork
 ```bash
 python main.py --camera-source record3d --mode piano --paper-keyboard --debug --record-session data/sessions/ipad_test01
 ```
+
+Record3D + 虚拟钢琴模式下，`--record-session` 默认不会从程序启动就开始写文件，而是等你按 `d` 完成桌面 depth 校准，并再稳定 `--record-start-stable-frames` 帧后才开始。这样基准集不会包含启动、旋转、未校准和按 `d` 前的无效帧。如果确实想把启动过程也录进去，加 `--record-immediately`。
 
 如果是在一张纸上画的琴键或 iPad 上的真实琴键，不需要按 `d` 做 depth 校准。`--paper-keyboard` 会继续记录 fallback piano zones 和手部 landmarks，但不会把虚拟琴键画到窗口里，避免挡住真实琴键。按 `d` 只适合你想用 Record3D depth 做接触判定、并让系统自动估计虚拟键盘平面时使用。
 

@@ -142,6 +142,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-calibration-preview", action="store_true", help="Hide calibration preview window")
     parser.add_argument("--record-session", default=None, help="Directory to save replayable session data")
     parser.add_argument("--no-record-video", action="store_true", help="Record JSONL landmarks/diagnostics without AVI video")
+    parser.add_argument(
+        "--record-immediately",
+        action="store_true",
+        help="Start --record-session immediately instead of waiting for Record3D depth calibration",
+    )
+    parser.add_argument(
+        "--record-start-stable-frames",
+        type=int,
+        default=config.RECORD_START_STABLE_FRAMES,
+        help="Frames to wait after Record3D depth calibration before deferred recording starts",
+    )
     parser.add_argument("--record3d-device", type=int, default=0, help="Record3D device index")
     parser.add_argument("--record3d-timeout", type=float, default=2.0, help="Seconds to wait for each Record3D frame")
     parser.add_argument("--record3d-rotate", type=int, choices=[0, 90, 180, 270], default=0, help="Rotate Record3D frames")
@@ -309,21 +320,21 @@ def main() -> int:
     frame_metrics_text = ""
     last_debug_metrics_time = 0.0
     recorder: Optional[SessionRecorder] = None
-    if args.record_session:
-        recorder = SessionRecorder(
-            output_dir=args.record_session,
-            metadata={
-                "args": vars(args),
-                "camera_settings": camera_settings,
-                "camera_source": args.camera_source,
-                "instrument_roi": instrument_roi,
-                "mode": layout.mode,
-                "depth_contact_mode": config.DEPTH_CONTACT_MODE,
-            },
-            record_video=not args.no_record_video,
-            fps=camera_settings.fps,
+    recording_deferred = should_defer_recording_until_depth_ready(args)
+    recording_start_countdown: Optional[int] = None
+    if args.record_session and recording_deferred:
+        print(
+            f"Recording armed for {args.record_session}; press `d` to calibrate depth. "
+            f"Capture starts after {max(0, args.record_start_stable_frames)} stable frame(s)."
         )
-        print(f"Recording session to {args.record_session}")
+    elif args.record_session:
+        recorder = create_session_recorder(
+            args=args,
+            camera_settings=camera_settings,
+            instrument_roi=instrument_roi,
+            layout=layout,
+            deferred_until_depth_ready=False,
+        )
 
     try:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -388,6 +399,31 @@ def main() -> int:
                 depth_estimator.calibrate(rgbd_frame, provisional_zones)
             depth_observations = depth_estimator.update(rgbd_frame, hands, zones) if depth_estimator is not None else {}
 
+            if recording_deferred and recorder is None:
+                recording_ready = (
+                    depth_estimator is not None
+                    and depth_estimator.calibrated
+                    and depth_calibration_frames_remaining <= 0
+                    and not hide_piano_until_calibrated
+                )
+                if recording_ready:
+                    if recording_start_countdown is None:
+                        recording_start_countdown = max(0, int(args.record_start_stable_frames))
+                        print(f"Depth calibrated. Recording starts in {recording_start_countdown} stable frame(s).")
+                    if recording_start_countdown > 0:
+                        recording_start_countdown -= 1
+                    if recording_start_countdown == 0:
+                        recorder = create_session_recorder(
+                            args=args,
+                            camera_settings=camera_settings,
+                            instrument_roi=instrument_roi,
+                            layout=layout,
+                            deferred_until_depth_ready=True,
+                        )
+                        recording_start_countdown = -1
+                else:
+                    recording_start_countdown = None
+
             gesture_hands = [hand for hand in hands if getattr(hand, "tracking_source", "mediapipe") != "optical_flow"]
             if gesture_hands:
                 gesture = gesture_recognizer.recognize(gesture_hands[0])
@@ -436,7 +472,12 @@ def main() -> int:
                 current_time=current_time,
                 hit_detector=hit_detector,
                 debug=args.debug,
-                debug_lines=_debug_lines(frame_metrics_text, depth_estimator, depth_calibration_frames_remaining),
+                debug_lines=_debug_lines(
+                    frame_metrics_text,
+                    depth_estimator,
+                    depth_calibration_frames_remaining,
+                    _recording_status_text(args, recorder, recording_deferred, recording_start_countdown),
+                ),
                 draw_instrument_overlay=not (args.hide_instrument_overlay or args.paper_keyboard),
             )
 
@@ -473,6 +514,8 @@ def main() -> int:
                     depth_estimator.reset()
                     layout.set_piano_quad(None)
                     hit_detector.reset()
+                    if recording_deferred and recorder is None:
+                        recording_start_countdown = None
                     depth_calibration_frames_remaining = max(1, int(args.depth_baseline_frames))
                     print(f"Depth desk calibration started: collecting {depth_calibration_frames_remaining} frame(s).")
             elif key == ord("o"):
@@ -489,6 +532,8 @@ def main() -> int:
                     depth_estimator.reset()
                     layout.set_piano_quad(None)
                     depth_calibration_frames_remaining = 0
+                if recording_deferred and recorder is None:
+                    recording_start_countdown = None
             elif key in {ord("="), ord("+")}:
                 display_scale = min(4.0, display_scale + 0.1)
                 last_window_image_size = None
@@ -533,6 +578,43 @@ def main() -> int:
             recorder.close()
         cv2.destroyAllWindows()
     return 0
+
+
+def should_defer_recording_until_depth_ready(args: argparse.Namespace) -> bool:
+    return (
+        bool(args.record_session)
+        and not args.record_immediately
+        and args.camera_source == "record3d"
+        and args.mode == "piano"
+        and not args.paper_keyboard
+        and config.DEPTH_CONTACT_MODE != "off"
+    )
+
+
+def create_session_recorder(
+    args: argparse.Namespace,
+    camera_settings: CameraSettings,
+    instrument_roi: Optional[tuple[float, float, float, float]],
+    layout: InstrumentLayout,
+    deferred_until_depth_ready: bool,
+) -> SessionRecorder:
+    recorder = SessionRecorder(
+        output_dir=args.record_session,
+        metadata={
+            "args": vars(args),
+            "camera_settings": camera_settings,
+            "camera_source": args.camera_source,
+            "instrument_roi": instrument_roi,
+            "mode": layout.mode,
+            "depth_contact_mode": config.DEPTH_CONTACT_MODE,
+            "recording_deferred_until_depth_ready": deferred_until_depth_ready,
+            "record_start_stable_frames": args.record_start_stable_frames if deferred_until_depth_ready else 0,
+        },
+        record_video=not args.no_record_video,
+        fps=camera_settings.fps,
+    )
+    print(f"Recording session to {args.record_session}")
+    return recorder
 
 
 def build_camera_settings(args: argparse.Namespace) -> CameraSettings:
@@ -750,15 +832,37 @@ def _debug_lines(
     frame_metrics_text: str,
     depth_estimator: Optional[DepthContactEstimator],
     depth_calibration_frames_remaining: int = 0,
+    recording_status_text: str = "",
 ) -> list[str]:
     lines = []
     if frame_metrics_text:
         lines.append(frame_metrics_text)
+    if recording_status_text:
+        lines.append(recording_status_text)
     if depth_estimator is not None:
         if depth_calibration_frames_remaining > 0:
             lines.append(f"Depth: calibrating {depth_calibration_frames_remaining} frame(s)")
         lines.append(depth_estimator.status_text())
     return lines
+
+
+def _recording_status_text(
+    args: argparse.Namespace,
+    recorder: Optional[SessionRecorder],
+    recording_deferred: bool,
+    recording_start_countdown: Optional[int],
+) -> str:
+    if not args.record_session:
+        return ""
+    if recorder is not None:
+        return "Recording: active"
+    if not recording_deferred:
+        return ""
+    if recording_start_countdown is None:
+        return "Recording: waiting for depth calibration"
+    if recording_start_countdown > 0:
+        return f"Recording: starting in {recording_start_countdown} frame(s)"
+    return "Recording: starting"
 
 
 def _expire_highlights(highlights: Dict[str, float], current_time: float) -> None:
