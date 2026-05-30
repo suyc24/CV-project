@@ -11,11 +11,11 @@ import config
 from hand_tracker import HandLandmarks, HandTracker
 
 
-def make_hand(hand_id: int = 0) -> HandLandmarks:
-    landmarks = [(100 + idx, 120 + idx, 0.0) for idx in range(21)]
+def make_hand(hand_id: int = 0, offset_x: int = 0, offset_y: int = 0, label: str = "Right") -> HandLandmarks:
+    landmarks = [(100 + offset_x + idx, 120 + offset_y + idx, 0.0) for idx in range(21)]
     return HandLandmarks(
         hand_id=hand_id,
-        label="Right",
+        label=label,
         landmarks=landmarks,
         normalized_landmarks=[(0.0, 0.0, 0.0)] * 21,
     )
@@ -85,7 +85,7 @@ def test_full_miss_reacquire_gets_longer_guard():
 
 
 def test_partial_roi_detection_reacquires_full_frame_for_second_hand():
-    tracker = FakeTracker([[make_hand(0)], [make_hand(0), make_hand(1)]])
+    tracker = FakeTracker([[make_hand(0)], [make_hand(0), make_hand(1, offset_x=180)]])
     tracker._frame_index = 5
     frame = np.zeros((80, 80, 3), dtype=np.uint8)
 
@@ -94,8 +94,19 @@ def test_partial_roi_detection_reacquires_full_frame_for_second_hand():
     assert len(hands) == 2
 
 
+def test_duplicate_full_frame_hand_is_removed():
+    tracker = FakeTracker([[make_hand(0)], [make_hand(0), make_hand(1, offset_x=4, offset_y=3)]])
+    tracker._frame_index = 5
+    frame = np.zeros((80, 80, 3), dtype=np.uint8)
+
+    hands = tracker.process(frame, roi=(0, 20, 80, 80))
+
+    assert len(hands) == 1
+
+
 if __name__ == "__main__":
     test_new_hand_is_marked_unstable_for_guard_frames()
     test_full_miss_reacquire_gets_longer_guard()
     test_partial_roi_detection_reacquires_full_frame_for_second_hand()
+    test_duplicate_full_frame_hand_is_removed()
     print("hand tracker guard tests passed")

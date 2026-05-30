@@ -181,6 +181,7 @@ class HandTracker:
             if len(full_frame_hands) > len(hands):
                 hands = full_frame_hands
 
+        hands = self._deduplicate_hands(hands)
         if not hands:
             bridged = self._bridge_missing_hands(frame_bgr)
             if bridged:
@@ -445,6 +446,49 @@ class HandTracker:
 
         self._tracked_hand_centers = next_centers
         return assigned
+
+    def _deduplicate_hands(self, hands: List[HandLandmarks]) -> List[HandLandmarks]:
+        if not config.TRACKING_DEDUPLICATE_HANDS or len(hands) < 2:
+            return hands
+
+        kept: List[HandLandmarks] = []
+        for hand in hands:
+            if any(self._hands_are_duplicates(hand, existing) for existing in kept):
+                continue
+            kept.append(hand)
+        return kept
+
+    def _hands_are_duplicates(self, first: HandLandmarks, second: HandLandmarks) -> bool:
+        if not first.landmarks or not second.landmarks:
+            return False
+        label_matches = first.label == second.label or "Unknown" in {first.label, second.label}
+        if not label_matches:
+            return False
+
+        first_scale = self._hand_scale(first.landmarks)
+        second_scale = self._hand_scale(second.landmarks)
+        scale = max(1.0, min(first_scale, second_scale))
+        center_limit = min(
+            float(config.TRACKING_DUPLICATE_HAND_MAX_CENTER_DISTANCE_PX),
+            scale * float(config.TRACKING_DUPLICATE_HAND_CENTER_DISTANCE_RATIO),
+        )
+        landmark_limit = min(
+            float(config.TRACKING_DUPLICATE_HAND_MAX_LANDMARK_DISTANCE_PX),
+            scale * float(config.TRACKING_DUPLICATE_HAND_LANDMARK_DISTANCE_RATIO),
+        )
+
+        first_center = self._hand_center(first.landmarks)
+        second_center = self._hand_center(second.landmarks)
+        if math.hypot(first_center[0] - second_center[0], first_center[1] - second_center[1]) > center_limit:
+            return False
+
+        distances = [
+            math.hypot(float(ax) - float(bx), float(ay) - float(by))
+            for (ax, ay, _), (bx, by, _) in zip(first.landmarks, second.landmarks)
+        ]
+        if not distances:
+            return False
+        return (sum(distances) / len(distances)) <= landmark_limit
 
     def _stabilize_with_optical_flow(self, frame_bgr, hands: List[HandLandmarks]) -> List[HandLandmarks]:
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
