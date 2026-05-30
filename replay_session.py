@@ -24,9 +24,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--piano-arm-lift", type=float, default=None)
     parser.add_argument("--piano-release-stable-frames", type=int, default=None)
     parser.add_argument("--depth-contact-mode", choices=["off", "assist", "required"], default=None)
-    parser.add_argument("--piano-trigger-mode", choices=["2d", "hybrid", "3d"], default=None)
-    parser.add_argument("--piano-depth-trigger", dest="piano_depth_trigger", action="store_true", default=None)
-    parser.add_argument("--no-piano-depth-trigger", dest="piano_depth_trigger", action="store_false")
     parser.add_argument("--piano-depth-release-guard-assist", action="store_true")
     parser.add_argument("--piano-arm-ratio", type=float, default=None)
     parser.add_argument("--drum-velocity-threshold", type=float, default=None)
@@ -93,20 +90,6 @@ def main() -> int:
             "PIANO_RELEASE_STRONG_LIFT_MULTIPLIER": config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER,
             "PIANO_DEPTH_RELEASE_GUARD": config.PIANO_DEPTH_RELEASE_GUARD,
             "PIANO_DEPTH_RELEASE_GUARD_ASSIST": config.PIANO_DEPTH_RELEASE_GUARD_ASSIST,
-            "PIANO_TRIGGER_MODE": config.PIANO_TRIGGER_MODE,
-            "PIANO_DEPTH_TRIGGER_ENABLED": config.PIANO_DEPTH_TRIGGER_ENABLED,
-            "PIANO_DEPTH_ARM_HEIGHT_M": config.PIANO_DEPTH_ARM_HEIGHT_M,
-            "PIANO_DEPTH_RELEASE_HEIGHT_M": config.PIANO_DEPTH_RELEASE_HEIGHT_M,
-            "PIANO_DEPTH_PRESS_HEIGHT_M": config.PIANO_DEPTH_PRESS_HEIGHT_M,
-            "PIANO_DEPTH_MIN_DROP_M": config.PIANO_DEPTH_MIN_DROP_M,
-            "PIANO_DEPTH_FALLING_VELOCITY_M_S": config.PIANO_DEPTH_FALLING_VELOCITY_M_S,
-            "PIANO_DEPTH_STRIKE_MIN_VELOCITY_M_S": config.PIANO_DEPTH_STRIKE_MIN_VELOCITY_M_S,
-            "PIANO_3D_ARM_HEIGHT_M": config.PIANO_3D_ARM_HEIGHT_M,
-            "PIANO_3D_RELEASE_HEIGHT_M": config.PIANO_3D_RELEASE_HEIGHT_M,
-            "PIANO_3D_PRESS_HEIGHT_M": config.PIANO_3D_PRESS_HEIGHT_M,
-            "PIANO_3D_MIN_DROP_M": config.PIANO_3D_MIN_DROP_M,
-            "PIANO_3D_FALLING_VELOCITY_M_S": config.PIANO_3D_FALLING_VELOCITY_M_S,
-            "PIANO_3D_STRIKE_MIN_VELOCITY_M_S": config.PIANO_3D_STRIKE_MIN_VELOCITY_M_S,
             "PIANO_RELEASE_MIN_NET_LIFT_PX": config.PIANO_RELEASE_MIN_NET_LIFT_PX,
             "PIANO_RELEASE_MAX_SINGLE_FRAME_LIFT_PX": config.PIANO_RELEASE_MAX_SINGLE_FRAME_LIFT_PX,
             "PIANO_JITTER_GUARD_ENABLED": config.PIANO_JITTER_GUARD_ENABLED,
@@ -160,12 +143,6 @@ def apply_overrides(args: argparse.Namespace) -> None:
         config.PIANO_RELEASE_STABLE_FRAMES = args.piano_release_stable_frames
     if args.depth_contact_mode is not None:
         config.DEPTH_CONTACT_MODE = args.depth_contact_mode
-    if args.piano_trigger_mode is not None:
-        config.PIANO_TRIGGER_MODE = args.piano_trigger_mode
-        config.PIANO_DEPTH_TRIGGER_ENABLED = args.piano_trigger_mode != "2d"
-    if args.piano_depth_trigger is not None:
-        config.PIANO_TRIGGER_MODE = "hybrid" if args.piano_depth_trigger else "2d"
-        config.PIANO_DEPTH_TRIGGER_ENABLED = args.piano_depth_trigger
     if args.piano_depth_release_guard_assist:
         config.PIANO_DEPTH_RELEASE_GUARD_ASSIST = True
     if args.piano_arm_ratio is not None:
@@ -244,10 +221,6 @@ def _depth_observations_from_dict(rows: object) -> Dict[tuple[int, int], SimpleN
             contact=_optional_bool(row.get("contact")),
             confidence=float(row.get("confidence", 0.0) or 0.0),
             reason=str(row.get("reason", "")),
-            finger_sample_count=int(row.get("finger_sample_count", 0) or 0),
-            desk_sample_count=int(row.get("desk_sample_count", 0) or 0),
-            sample_radius_px=int(row.get("sample_radius_px", 0) or 0),
-            desk_depth_source=str(row.get("desk_depth_source", "")),
         )
     return observations
 

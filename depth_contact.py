@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -24,10 +25,6 @@ class DepthObservation:
     contact: Optional[bool]
     confidence: float
     reason: str
-    finger_sample_count: int = 0
-    desk_sample_count: int = 0
-    sample_radius_px: int = 0
-    desk_depth_source: str = ""
 
 
 class DepthContactEstimator:
@@ -57,8 +54,8 @@ class DepthContactEstimator:
         self.min_confidence = min_confidence
         self._baseline_accumulator: List[np.ndarray] = []
         self._baseline_depth_m: Optional[np.ndarray] = None
-        self._baseline_shape: Optional[Tuple[int, int]] = None
         self._baseline_plane: Optional[Tuple[float, float, float]] = None
+        self._baseline_shape: Optional[Tuple[int, int]] = None
         self._last_observations: Dict[Tuple[int, int], DepthObservation] = {}
         self._last_status = "depth: unavailable"
 
@@ -73,8 +70,8 @@ class DepthContactEstimator:
     def reset(self) -> None:
         self._baseline_accumulator.clear()
         self._baseline_depth_m = None
-        self._baseline_shape = None
         self._baseline_plane = None
+        self._baseline_shape = None
         self._last_observations = {}
         self._last_status = "Depth: uncalibrated (press d with hands away)"
 
@@ -106,12 +103,13 @@ class DepthContactEstimator:
             self._baseline_accumulator.pop(0)
 
         stack = np.stack(self._baseline_accumulator, axis=0)
-        self._baseline_depth_m = np.nanmedian(stack, axis=0).astype(np.float32)
-        self._baseline_shape = self._baseline_depth_m.shape
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            self._baseline_depth_m = np.nanmedian(stack, axis=0).astype(np.float32)
         self._baseline_plane = self._fit_depth_plane(self._baseline_depth_m)
+        self._baseline_shape = self._baseline_depth_m.shape
         valid_ratio = float(np.mean(np.isfinite(self._baseline_depth_m) & (self._baseline_depth_m > 0)))
-        plane_status = " plane=ok" if self._baseline_plane is not None else " plane=none"
-        self._last_status = f"Depth: calibrated valid={valid_ratio * 100:.0f}%{plane_status}"
+        self._last_status = f"Depth: calibrated valid={valid_ratio * 100:.0f}%"
         return True
 
     def update(
@@ -151,10 +149,9 @@ class DepthContactEstimator:
                 )
 
         known = [obs for obs in self._last_observations.values() if obs.contact is not None]
-        unknown = len(self._last_observations) - len(known)
         contacts = sum(1 for obs in known if obs.contact)
         self._last_status = (
-            f"Depth: mode={self.mode} contact={contacts}/{len(known)} unknown={unknown}"
+            f"Depth: mode={self.mode} contact={contacts}/{len(known)}"
             if self.calibrated
             else "Depth: uncalibrated (press d)"
         )
@@ -239,35 +236,6 @@ class DepthContactEstimator:
             direction = -direction
         return float(np.arctan2(direction[1], direction[0]))
 
-    def _fit_depth_plane(self, depth: np.ndarray) -> Optional[Tuple[float, float, float]]:
-        valid = np.isfinite(depth) & (depth > 0)
-        if np.count_nonzero(valid) < config.DEPTH_PLANE_MIN_SAMPLES:
-            return None
-        ys, xs = np.where(valid)
-        values = depth[valid].astype(np.float32)
-        step = max(1, len(values) // 12000)
-        xs = xs[::step].astype(np.float32)
-        ys = ys[::step].astype(np.float32)
-        values = values[::step]
-        design = np.column_stack([xs, ys, np.ones_like(xs)])
-        try:
-            a, b, c = np.linalg.lstsq(design, values, rcond=None)[0]
-        except np.linalg.LinAlgError:
-            return None
-        return (float(a), float(b), float(c))
-
-    def _plane_depth(self, x: int, y: int, shape: Tuple[int, int]) -> Optional[float]:
-        if self._baseline_plane is None:
-            return None
-        height, width = shape[:2]
-        if not (0 <= x < width and 0 <= y < height):
-            return None
-        a, b, c = self._baseline_plane
-        value = a * float(x) + b * float(y) + c
-        if not np.isfinite(value) or value <= 0:
-            return None
-        return float(value)
-
     def _clamp_point(self, point: np.ndarray, width: int, height: int) -> Tuple[int, int]:
         x = int(round(float(np.clip(point[0], 0, width - 1))))
         y = int(round(float(np.clip(point[1], 0, height - 1))))
@@ -282,83 +250,21 @@ class DepthContactEstimator:
         depth: np.ndarray,
         confidence: Optional[np.ndarray],
     ) -> DepthObservation:
-        finger_depth, finger_count, finger_radius = self._local_depth_stats(
-            depth,
-            x,
-            y,
-            percentile=config.DEPTH_FINGER_DEPTH_PERCENTILE,
-        )
+        finger_depth = self._local_depth(depth, x, y, prefer_near=True)
         conf_value = self._local_confidence(confidence, x, y)
         if finger_depth is None:
-            return self._unknown(
-                hand_id,
-                finger_id,
-                x,
-                y,
-                None,
-                None,
-                conf_value,
-                "no_finger_depth",
-                finger_count=finger_count,
-                sample_radius=finger_radius,
-            )
+            return self._unknown(hand_id, finger_id, x, y, None, None, conf_value, "no_finger_depth")
         if not self.calibrated or self._baseline_depth_m is None:
-            return self._unknown(
-                hand_id,
-                finger_id,
-                x,
-                y,
-                finger_depth,
-                None,
-                conf_value,
-                "uncalibrated",
-                finger_count=finger_count,
-                sample_radius=finger_radius,
-            )
+            return self._unknown(hand_id, finger_id, x, y, finger_depth, None, conf_value, "uncalibrated")
 
         baseline = self._baseline_depth_m
         if baseline.shape != depth.shape:
             baseline = cv2.resize(baseline, (depth.shape[1], depth.shape[0]), interpolation=cv2.INTER_LINEAR)
-        desk_depth, desk_count, desk_radius = self._local_depth_stats(
-            baseline,
-            x,
-            y,
-            percentile=config.DEPTH_DESK_DEPTH_PERCENTILE,
-        )
-        desk_source = "local"
+        desk_depth = self._desk_depth_at(baseline, x, y)
         if desk_depth is None:
-            desk_depth = self._plane_depth(x, y, baseline.shape)
-            desk_source = "plane" if desk_depth is not None else "missing"
-        if desk_depth is None:
-            return self._unknown(
-                hand_id,
-                finger_id,
-                x,
-                y,
-                finger_depth,
-                None,
-                conf_value,
-                "no_desk_depth",
-                finger_count=finger_count,
-                desk_count=desk_count,
-                sample_radius=max(finger_radius, desk_radius),
-                desk_source=desk_source,
-            )
+            return self._unknown(hand_id, finger_id, x, y, finger_depth, None, conf_value, "no_desk_depth")
         if conf_value < self.min_confidence:
-            return self._unknown(
-                hand_id,
-                finger_id,
-                x,
-                y,
-                finger_depth,
-                desk_depth,
-                conf_value,
-                "low_confidence",
-                finger_count=finger_count,
-                desk_count=desk_count,
-                sample_radius=max(finger_radius, desk_radius),
-                desk_source=desk_source,
-            )
+            return self._unknown(hand_id, finger_id, x, y, finger_depth, desk_depth, conf_value, "low_confidence")
 
         height = max(0.0, float(desk_depth - finger_depth))
         contact = height <= self.contact_threshold_m
@@ -373,10 +279,6 @@ class DepthContactEstimator:
             contact=contact,
             confidence=conf_value,
             reason="contact" if contact else "above_desk",
-            finger_sample_count=finger_count,
-            desk_sample_count=desk_count,
-            sample_radius_px=max(finger_radius, desk_radius),
-            desk_depth_source=desk_source,
         )
 
     def _unknown(
@@ -389,10 +291,6 @@ class DepthContactEstimator:
         desk_depth: Optional[float],
         confidence: float,
         reason: str,
-        finger_count: int = 0,
-        desk_count: int = 0,
-        sample_radius: int = 0,
-        desk_source: str = "",
     ) -> DepthObservation:
         height = None if finger_depth is None or desk_depth is None else max(0.0, float(desk_depth - finger_depth))
         return DepthObservation(
@@ -406,10 +304,6 @@ class DepthContactEstimator:
             contact=None,
             confidence=confidence,
             reason=reason,
-            finger_sample_count=finger_count,
-            desk_sample_count=desk_count,
-            sample_radius_px=sample_radius,
-            desk_depth_source=desk_source,
         )
 
     def _aligned_depth(self, frame: RGBDFrame) -> Optional[np.ndarray]:
@@ -453,34 +347,48 @@ class DepthContactEstimator:
             return None
         return np.ascontiguousarray(array)
 
-    def _local_depth(self, depth: np.ndarray, x: int, y: int) -> Optional[float]:
-        value, _, _ = self._local_depth_stats(depth, x, y, percentile=50.0)
-        return value
+    def _desk_depth_at(self, baseline: np.ndarray, x: int, y: int) -> Optional[float]:
+        desk_depth = self._local_depth(baseline, x, y, prefer_near=False)
+        if desk_depth is not None:
+            return desk_depth
+        if self._baseline_plane is None:
+            return None
+        a, b, c = self._baseline_plane
+        value = a * float(x) + b * float(y) + c
+        if not np.isfinite(value) or value <= 0:
+            return None
+        return float(value)
 
-    def _local_depth_stats(
-        self,
-        depth: np.ndarray,
-        x: int,
-        y: int,
-        percentile: float,
-    ) -> Tuple[Optional[float], int, int]:
+    def _fit_depth_plane(self, depth: np.ndarray) -> Optional[Tuple[float, float, float]]:
+        valid = np.isfinite(depth) & (depth > 0)
+        if np.count_nonzero(valid) < 256:
+            return None
+        ys, xs = np.where(valid)
+        step = max(1, len(xs) // 6000)
+        xs = xs[::step].astype(np.float32)
+        ys = ys[::step].astype(np.float32)
+        zs = depth[valid][::step].astype(np.float32)
+        design = np.column_stack([xs, ys, np.ones_like(xs)])
+        try:
+            a, b, c = np.linalg.lstsq(design, zs, rcond=None)[0]
+        except np.linalg.LinAlgError:
+            return None
+        return (float(a), float(b), float(c))
+
+    def _local_depth(self, depth: np.ndarray, x: int, y: int, prefer_near: bool = False) -> Optional[float]:
         height, width = depth.shape[:2]
         if not (0 <= x < width and 0 <= y < height):
-            return None, 0, 0
-        min_samples = max(1, int(config.DEPTH_MIN_SAMPLE_COUNT))
-        start_radius = max(0, int(self.sample_radius_px))
-        max_radius = max(start_radius, int(config.DEPTH_MAX_SAMPLE_RADIUS_PX))
-        last_count = 0
-        for radius in range(start_radius, max_radius + 1):
-            x1, x2 = max(0, x - radius), min(width, x + radius + 1)
-            y1, y2 = max(0, y - radius), min(height, y + radius + 1)
-            patch = depth[y1:y2, x1:x2]
-            values = patch[np.isfinite(patch) & (patch > 0)]
-            last_count = int(values.size)
-            if values.size >= min_samples:
-                clipped_percentile = float(np.clip(percentile, 0.0, 100.0))
-                return float(np.percentile(values, clipped_percentile)), int(values.size), radius
-        return None, last_count, max_radius
+            return None
+        radius = max(0, self.sample_radius_px)
+        x1, x2 = max(0, x - radius), min(width, x + radius + 1)
+        y1, y2 = max(0, y - radius), min(height, y + radius + 1)
+        patch = depth[y1:y2, x1:x2]
+        values = patch[np.isfinite(patch) & (patch > 0)]
+        if values.size < max(3, radius):
+            return None
+        if prefer_near and values.size >= 5:
+            return float(np.percentile(values, 25))
+        return float(np.median(values))
 
     def _local_confidence(self, confidence: Optional[np.ndarray], x: int, y: int) -> float:
         if confidence is None:

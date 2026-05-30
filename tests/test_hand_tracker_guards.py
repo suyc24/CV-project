@@ -11,8 +11,8 @@ import config
 from hand_tracker import HandLandmarks, HandTracker
 
 
-def make_hand(hand_id: int = 0, offset_x: int = 0, offset_y: int = 0, label: str = "Right") -> HandLandmarks:
-    landmarks = [(100 + offset_x + idx, 120 + offset_y + idx, 0.0) for idx in range(21)]
+def make_hand(hand_id: int = 0, x: int = 100, y: int = 120, label: str = "Right") -> HandLandmarks:
+    landmarks = [(x + idx, y + idx, 0.0) for idx in range(21)]
     return HandLandmarks(
         hand_id=hand_id,
         label=label,
@@ -59,33 +59,35 @@ def trigger_ids_are_guarded(hand: HandLandmarks) -> bool:
 
 
 def test_new_hand_is_marked_unstable_for_guard_frames():
-    tracker = FakeTracker([[make_hand()], [make_hand()], [make_hand()]])
+    guard_frames = int(config.TRACKING_NEW_HAND_HIT_BLOCK_FRAMES)
+    tracker = FakeTracker([[make_hand()] for _ in range(guard_frames + 1)])
     frame = np.zeros((80, 80, 3), dtype=np.uint8)
 
-    first = tracker.process(frame)
-    second = tracker.process(frame)
-    third = tracker.process(frame)
+    guarded = [trigger_ids_are_guarded(tracker.process(frame)[0]) for _ in range(guard_frames + 1)]
 
-    assert trigger_ids_are_guarded(first[0])
-    assert trigger_ids_are_guarded(second[0])
-    assert not trigger_ids_are_guarded(third[0])
+    assert all(guarded[:guard_frames])
+    assert guarded[guard_frames] is False
 
 
 def test_full_miss_reacquire_gets_longer_guard():
-    detections = [[], [], [make_hand()], [make_hand()], [make_hand()], [make_hand()], [make_hand()]]
+    guard_frames = max(
+        int(config.TRACKING_NEW_HAND_HIT_BLOCK_FRAMES),
+        int(config.TRACKING_FULL_MISS_REACQUIRE_HIT_BLOCK_FRAMES),
+    )
+    detections = [[], []] + [[make_hand()] for _ in range(guard_frames + 1)]
     tracker = FakeTracker(detections)
     frame = np.zeros((80, 80, 3), dtype=np.uint8)
 
     assert tracker.process(frame) == []
     assert tracker.process(frame) == []
-    guarded = [trigger_ids_are_guarded(tracker.process(frame)[0]) for _ in range(5)]
+    guarded = [trigger_ids_are_guarded(tracker.process(frame)[0]) for _ in range(guard_frames + 1)]
 
-    assert guarded[:4] == [True, True, True, True]
-    assert guarded[4] is False
+    assert all(guarded[:guard_frames])
+    assert guarded[guard_frames] is False
 
 
 def test_partial_roi_detection_reacquires_full_frame_for_second_hand():
-    tracker = FakeTracker([[make_hand(0)], [make_hand(0), make_hand(1, offset_x=180)]])
+    tracker = FakeTracker([[make_hand(0)], [make_hand(0), make_hand(1, x=280)]])
     tracker._frame_index = 5
     frame = np.zeros((80, 80, 3), dtype=np.uint8)
 
@@ -94,35 +96,63 @@ def test_partial_roi_detection_reacquires_full_frame_for_second_hand():
     assert len(hands) == 2
 
 
-def test_duplicate_full_frame_hand_is_removed():
-    tracker = FakeTracker([[make_hand(0)], [make_hand(0), make_hand(1, offset_x=4, offset_y=3)]])
-    tracker._frame_index = 5
-    frame = np.zeros((80, 80, 3), dtype=np.uint8)
-
-    hands = tracker.process(frame, roi=(0, 20, 80, 80))
-
-    assert len(hands) == 1
-
-
-def test_single_hand_reuses_id_across_label_flip_and_jump():
+def test_single_hand_label_flip_keeps_stable_id():
     tracker = FakeTracker(
         [
+            [make_hand(label="Left")],
             [make_hand(label="Right")],
-            [make_hand(offset_x=260, label="Left")],
-            [make_hand(offset_x=280, label="Right")],
         ]
     )
     frame = np.zeros((80, 80, 3), dtype=np.uint8)
 
-    ids = [tracker.process(frame)[0].hand_id for _ in range(3)]
+    first = tracker.process(frame)
+    second = tracker.process(frame)
 
-    assert ids == [0, 0, 0]
+    assert first[0].hand_id == second[0].hand_id
+
+
+def test_extra_detection_does_not_steal_existing_hand_id():
+    tracker = FakeTracker(
+        [
+            [make_hand(x=100, y=120, label="Left")],
+            [
+                make_hand(x=210, y=120, label="Left"),
+                make_hand(x=102, y=121, label="Left"),
+            ],
+        ]
+    )
+    frame = np.zeros((80, 80, 3), dtype=np.uint8)
+
+    first = tracker.process(frame)
+    second = tracker.process(frame)
+
+    assert second[1].hand_id == first[0].hand_id
+
+
+def test_overlapping_extra_detection_is_dropped():
+    tracker = FakeTracker(
+        [
+            [make_hand(x=100, y=120, label="Left")],
+            [
+                make_hand(x=112, y=124, label="Left"),
+                make_hand(x=101, y=120, label="Right"),
+            ],
+        ]
+    )
+    frame = np.zeros((80, 80, 3), dtype=np.uint8)
+
+    first = tracker.process(frame)
+    second = tracker.process(frame)
+
+    assert len(second) == 1
+    assert second[0].hand_id == first[0].hand_id
 
 
 if __name__ == "__main__":
     test_new_hand_is_marked_unstable_for_guard_frames()
     test_full_miss_reacquire_gets_longer_guard()
     test_partial_roi_detection_reacquires_full_frame_for_second_hand()
-    test_duplicate_full_frame_hand_is_removed()
-    test_single_hand_reuses_id_across_label_flip_and_jump()
+    test_single_hand_label_flip_keeps_stable_id()
+    test_extra_detection_does_not_steal_existing_hand_id()
+    test_overlapping_extra_detection_is_dropped()
     print("hand tracker guard tests passed")

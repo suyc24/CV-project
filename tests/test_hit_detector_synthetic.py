@@ -7,7 +7,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import config
-from hit_detector import FINGER_BASE_IDS, HitDetector
+from hit_detector import HitDetector
 from instrument import InstrumentLayout
 
 
@@ -17,13 +17,10 @@ def hand_with_finger(hand_id: int, finger_id: int, x: int, y: int):
     return SimpleNamespace(hand_id=hand_id, landmarks=landmarks)
 
 
-def hand_with_finger_positions(hand_id: int, positions: dict[int, tuple[int, int, int]]):
+def hand_with_fingers(hand_id: int, points: dict[int, tuple[int, int]]):
     landmarks = [(0, 0, 0.0)] * 21
-    for finger_id, (x, y, base_y) in positions.items():
+    for finger_id, (x, y) in points.items():
         landmarks[finger_id] = (x, y, 0.0)
-        base_id = FINGER_BASE_IDS.get(finger_id)
-        if base_id is not None:
-            landmarks[base_id] = (x, base_y, 0.0)
     return SimpleNamespace(hand_id=hand_id, landmarks=landmarks)
 
 
@@ -33,18 +30,6 @@ def contact_observation():
 
 def air_observation():
     return SimpleNamespace(contact=False, height_above_desk_m=0.12, reason="air")
-
-
-def unknown_depth_observation():
-    return SimpleNamespace(contact=None, height_above_desk_m=None, reason="no_finger_depth")
-
-
-def depth_height_observation(height_m: float):
-    return SimpleNamespace(
-        contact=height_m <= config.PIANO_DEPTH_PRESS_HEIGHT_M,
-        height_above_desk_m=height_m,
-        reason="contact" if height_m <= config.PIANO_DEPTH_PRESS_HEIGHT_M else "above_desk",
-    )
 
 
 def test_all_fingertips_can_trigger():
@@ -150,6 +135,32 @@ def test_clear_lift_allows_retrigger():
     assert len(hits) == 1
 
 
+def test_active_finger_blocks_other_same_hand_piano_hit():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    detector = HitDetector()
+    left_zone = zones[0]
+    right_zone = zones[1]
+    y_start = left_zone.y1 + 5
+    y_hit = int(left_zone.y1 + left_zone.height * 0.78)
+
+    detector.update([hand_with_finger(0, 8, left_zone.center[0], y_start)], zones, 100.0)
+    hits = detector.update([hand_with_finger(0, 8, left_zone.center[0], y_hit)], zones, 100.05)
+    assert len(hits) == 1
+
+    detector.update(
+        [hand_with_fingers(0, {8: (left_zone.center[0], y_hit), 12: (right_zone.center[0], y_start)})],
+        zones,
+        100.20,
+    )
+    hits = detector.update(
+        [hand_with_fingers(0, {8: (left_zone.center[0], y_hit), 12: (right_zone.center[0], y_hit)})],
+        zones,
+        100.25,
+    )
+    assert not hits
+    assert "suppressed_by_active_finger" in [diag["reason"] for diag in detector.diagnostics()]
+
+
 def test_depth_contact_prevents_false_release_retrigger():
     previous_mode = config.DEPTH_CONTACT_MODE
     config.DEPTH_CONTACT_MODE = "required"
@@ -179,8 +190,6 @@ def test_depth_contact_prevents_false_release_retrigger():
 def test_depth_contact_blocks_passive_piano_arm():
     previous = config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT
     config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT = True
-    previous_depth_trigger = config.PIANO_DEPTH_TRIGGER_ENABLED
-    config.PIANO_DEPTH_TRIGGER_ENABLED = False
     try:
         zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
         zone = zones[0]
@@ -196,321 +205,6 @@ def test_depth_contact_blocks_passive_piano_arm():
         assert not hits
     finally:
         config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT = previous
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous_depth_trigger
-
-
-def test_depth_height_can_trigger_with_flat_2d_motion():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "2d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[0]
-        detector = HitDetector()
-        x = zone.center[0]
-        y = zone.center[1]
-
-        detector.update(
-            [hand_with_finger(0, 8, x, y)],
-            zones,
-            100.0,
-            {(0, 8): depth_height_observation(0.090)},
-        )
-        hits = detector.update(
-            [hand_with_finger(0, 8, x, y)],
-            zones,
-            100.08,
-            {(0, 8): depth_height_observation(0.012)},
-        )
-
-        assert len(hits) == 1
-        assert hits[0].finger_id == 8
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_depth_height_release_allows_retrigger_with_flat_2d_motion():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "2d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[0]
-        detector = HitDetector()
-        x = zone.center[0]
-        y = zone.center[1]
-
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.0, {(0, 8): depth_height_observation(0.090)})
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.04, {(0, 8): depth_height_observation(0.040)})
-        hits = detector.update([hand_with_finger(0, 8, x, y)], zones, 100.08, {(0, 8): depth_height_observation(0.012)})
-        assert len(hits) == 1
-
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.20, {(0, 8): depth_height_observation(0.080)})
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.28, {(0, 8): depth_height_observation(0.080)})
-        hits = detector.update([hand_with_finger(0, 8, x, y)], zones, 100.36, {(0, 8): depth_height_observation(0.012)})
-
-        assert len(hits) == 1
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_3d_trigger_mode_ignores_2d_hit_without_depth():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[0]
-        detector = HitDetector()
-        x = zone.center[0]
-        y_start = zone.y1 + 5
-        y_hit = int(zone.y1 + zone.height * 0.78)
-
-        detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0)
-        hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.035)
-
-        assert not hits
-        assert "depth_unavailable" in [diag["reason"] for diag in detector.diagnostics()]
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_3d_trigger_mode_uses_depth_for_flat_2d_motion():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[0]
-        detector = HitDetector()
-        x = zone.center[0]
-        y = zone.center[1]
-
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.0, {(0, 8): depth_height_observation(0.090)})
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.04, {(0, 8): depth_height_observation(0.040)})
-        hits = detector.update([hand_with_finger(0, 8, x, y)], zones, 100.08, {(0, 8): depth_height_observation(0.012)})
-
-        assert len(hits) == 1
-        assert hits[0].finger_id == 8
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_3d_resting_contact_does_not_trigger():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[4]
-        detector = HitDetector()
-        x, y = zone.center
-
-        for idx, height in enumerate([0.006, 0.004, 0.005, 0.004, 0.006]):
-            hits = detector.update(
-                [hand_with_finger(0, 8, x, y)],
-                zones,
-                100.0 + idx * 0.04,
-                {(0, 8): depth_height_observation(height)},
-            )
-            assert not hits
-        assert "depth_resting" in [diag["reason"] for diag in detector.diagnostics()]
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_3d_hover_without_contact_does_not_trigger():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[4]
-        detector = HitDetector()
-        x, y = zone.center
-
-        for idx, height in enumerate([0.040, 0.035, 0.032, 0.030, 0.034, 0.038]):
-            hits = detector.update(
-                [hand_with_finger(0, 8, x, y)],
-                zones,
-                100.0 + idx * 0.04,
-                {(0, 8): depth_height_observation(height)},
-            )
-            assert not hits
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_3d_low_lift_ring_tap_triggers_once():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[2]
-        detector = HitDetector(finger_ids=(16,))
-        x, y = zone.center
-
-        detector.update([hand_with_finger(0, 16, x, y)], zones, 100.0, {(0, 16): depth_height_observation(0.030)})
-        detector.update([hand_with_finger(0, 16, x, y)], zones, 100.04, {(0, 16): depth_height_observation(0.020)})
-        hits = detector.update([hand_with_finger(0, 16, x, y)], zones, 100.08, {(0, 16): depth_height_observation(0.010)})
-        assert len(hits) == 1
-        assert hits[0].finger_id == 16
-        assert hits[0].note_id == zone.label
-
-        hits = detector.update([hand_with_finger(0, 16, x, y)], zones, 100.12, {(0, 16): depth_height_observation(0.009)})
-        assert not hits
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_3d_release_allows_retrigger_without_exaggerated_lift():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[4]
-        detector = HitDetector()
-        x, y = zone.center
-
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.0, {(0, 8): depth_height_observation(0.030)})
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.03, {(0, 8): depth_height_observation(0.020)})
-        hits = detector.update([hand_with_finger(0, 8, x, y)], zones, 100.06, {(0, 8): depth_height_observation(0.010)})
-        assert len(hits) == 1
-
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.22, {(0, 8): depth_height_observation(0.028)})
-        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.27, {(0, 8): depth_height_observation(0.029)})
-        hits = detector.update([hand_with_finger(0, 8, x, y)], zones, 100.33, {(0, 8): depth_height_observation(0.010)})
-        assert len(hits) == 1
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_3d_adjacent_key_uses_landing_zone_for_note():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        g4 = next(zone for zone in zones if zone.label == "G4")
-        a4 = next(zone for zone in zones if zone.label == "A4")
-        detector = HitDetector()
-        y = g4.center[1]
-
-        detector.update([hand_with_finger(0, 8, g4.center[0], y)], zones, 100.0, {(0, 8): depth_height_observation(0.032)})
-        detector.update([hand_with_finger(0, 8, g4.center[0], y)], zones, 100.03, {(0, 8): depth_height_observation(0.021)})
-        hits = detector.update([hand_with_finger(0, 8, a4.center[0], y)], zones, 100.06, {(0, 8): depth_height_observation(0.010)})
-        assert len(hits) == 1
-        assert hits[0].note_id == "A4"
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-
-
-def test_3d_depth_mode_all_fingertips_can_trigger():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    previous_ignore_thumb = config.PIANO_3D_IGNORE_THUMB
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    config.PIANO_3D_IGNORE_THUMB = False
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        zone = zones[4]
-        for finger_id in (4, 8, 12, 16, 20):
-            detector = HitDetector(finger_ids=(finger_id,))
-            x, y = zone.center
-            detector.update([hand_with_finger(0, finger_id, x, y)], zones, 100.0, {(0, finger_id): depth_height_observation(0.090)})
-            detector.update([hand_with_finger(0, finger_id, x, y)], zones, 100.04, {(0, finger_id): depth_height_observation(0.040)})
-            hits = detector.update([hand_with_finger(0, finger_id, x, y)], zones, 100.08, {(0, finger_id): depth_height_observation(0.010)})
-            assert len(hits) == 1, f"finger {finger_id} did not trigger in 3d mode"
-            assert hits[0].finger_id == finger_id
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-        config.PIANO_3D_IGNORE_THUMB = previous_ignore_thumb
-
-
-def test_3d_missing_depth_owner_suppresses_passive_finger():
-    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
-    previous_mode = config.PIANO_TRIGGER_MODE
-    previous_owner = config.PIANO_3D_MISSING_DEPTH_HAND_OWNER_ENABLED
-    previous_isolation = config.PIANO_3D_MISSING_DEPTH_FINGER_ISOLATION_ENABLED
-    config.PIANO_DEPTH_TRIGGER_ENABLED = True
-    config.PIANO_TRIGGER_MODE = "3d"
-    config.PIANO_3D_MISSING_DEPTH_HAND_OWNER_ENABLED = True
-    config.PIANO_3D_MISSING_DEPTH_FINGER_ISOLATION_ENABLED = True
-    try:
-        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-        e4 = next(zone for zone in zones if zone.label == "E4")
-        g4 = next(zone for zone in zones if zone.label == "G4")
-        detector = HitDetector(finger_ids=(8, 16))
-        unknown = {(0, 8): unknown_depth_observation(), (0, 16): unknown_depth_observation()}
-        rest_hand = hand_with_finger_positions(
-            0,
-            {
-                8: (g4.center[0], g4.center[1], g4.center[1] - 150),
-                16: (e4.center[0], e4.center[1], e4.center[1] - 150),
-            },
-        )
-
-        detector.update([rest_hand], zones, 100.0, unknown)
-        detector.update([rest_hand], zones, 100.05, unknown)
-        detector.update(
-            [
-                hand_with_finger_positions(
-                    0,
-                    {
-                        8: (g4.center[0], g4.center[1] - 30, g4.center[1] - 150),
-                        16: (e4.center[0], e4.center[1] - 18, e4.center[1] - 150),
-                    },
-                )
-            ],
-            zones,
-            100.10,
-            unknown,
-        )
-        hits = detector.update(
-            [
-                hand_with_finger_positions(
-                    0,
-                    {
-                        8: (g4.center[0], g4.center[1] + 2, g4.center[1] - 150),
-                        16: (e4.center[0], e4.center[1] + 2, e4.center[1] - 150),
-                    },
-                )
-            ],
-            zones,
-            100.15,
-            unknown,
-        )
-
-        assert len(hits) == 1
-        assert hits[0].finger_id == 8
-        assert hits[0].note_id == "G4"
-    finally:
-        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
-        config.PIANO_TRIGGER_MODE = previous_mode
-        config.PIANO_3D_MISSING_DEPTH_HAND_OWNER_ENABLED = previous_owner
-        config.PIANO_3D_MISSING_DEPTH_FINGER_ISOLATION_ENABLED = previous_isolation
 
 
 def test_piano_zone_mapping_sticks_near_boundary():
@@ -554,19 +248,9 @@ if __name__ == "__main__":
     test_pressed_finger_jitter_does_not_retrigger()
     test_short_lift_before_drop_does_not_trigger()
     test_clear_lift_allows_retrigger()
+    test_active_finger_blocks_other_same_hand_piano_hit()
     test_depth_contact_prevents_false_release_retrigger()
     test_depth_contact_blocks_passive_piano_arm()
-    test_depth_height_can_trigger_with_flat_2d_motion()
-    test_depth_height_release_allows_retrigger_with_flat_2d_motion()
-    test_3d_trigger_mode_ignores_2d_hit_without_depth()
-    test_3d_trigger_mode_uses_depth_for_flat_2d_motion()
-    test_3d_resting_contact_does_not_trigger()
-    test_3d_hover_without_contact_does_not_trigger()
-    test_3d_low_lift_ring_tap_triggers_once()
-    test_3d_release_allows_retrigger_without_exaggerated_lift()
-    test_3d_adjacent_key_uses_landing_zone_for_note()
-    test_3d_depth_mode_all_fingertips_can_trigger()
-    test_3d_missing_depth_owner_suppresses_passive_finger()
     test_piano_zone_mapping_sticks_near_boundary()
     test_perspective_key_mapping_uses_landing_x()
     print("synthetic hit detector tests passed")

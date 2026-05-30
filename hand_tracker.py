@@ -181,7 +181,6 @@ class HandTracker:
             if len(full_frame_hands) > len(hands):
                 hands = full_frame_hands
 
-        hands = self._deduplicate_hands(hands)
         if not hands:
             bridged = self._bridge_missing_hands(frame_bgr)
             if bridged:
@@ -402,46 +401,49 @@ class HandTracker:
             return hands
 
         previous = dict(self._tracked_hand_centers)
-        single_detected_hand = len(hands) == 1
+        assignments: Dict[int, int] = {}
+        used_detected: set[int] = set()
         used_previous: set[int] = set()
-        assigned: List[HandLandmarks] = []
         next_centers: Dict[int, Tuple[float, float, str]] = {}
 
-        for detected in hands:
-            center = self._hand_center(detected.landmarks)
-            scale = self._hand_scale(detected.landmarks)
-            best_id: Optional[int] = None
-            best_distance = float("inf")
+        detected_info = [
+            (self._hand_center(hand.landmarks), self._hand_scale(hand.landmarks), hand.label)
+            for hand in hands
+        ]
+        candidates: List[Tuple[float, float, int, int]] = []
+        for detected_idx, (center, scale, detected_label) in enumerate(detected_info):
             max_distance = max(float(config.STABLE_HAND_ID_MAX_DISTANCE_PX), scale * 0.75)
-            if single_detected_hand:
-                max_distance = max(
-                    max_distance,
-                    float(getattr(config, "STABLE_SINGLE_HAND_ID_MAX_DISTANCE_PX", max_distance)),
-                    scale * float(getattr(config, "STABLE_SINGLE_HAND_ID_SCALE_RATIO", 1.65)),
-                )
-            for stable_id, (px, py, label) in previous.items():
-                if stable_id in used_previous:
+            for stable_id, (px, py, previous_label) in previous.items():
+                distance = math.hypot(center[0] - px, center[1] - py)
+                if distance > max_distance:
                     continue
                 label_matches = (
-                    single_detected_hand
-                    or label == detected.label
-                    or "Unknown" in {label, detected.label}
+                    previous_label == detected_label
+                    or "Unknown" in {previous_label, detected_label}
                 )
-                if not label_matches:
-                    continue
-                distance = math.hypot(center[0] - px, center[1] - py)
-                if distance < best_distance and distance <= max_distance:
-                    best_distance = distance
-                    best_id = stable_id
+                label_penalty = 0.0 if label_matches else min(35.0, max_distance * 0.18)
+                candidates.append((distance + label_penalty, distance, detected_idx, stable_id))
 
+        for _, _, detected_idx, stable_id in sorted(candidates):
+            if detected_idx in used_detected or stable_id in used_previous:
+                continue
+            assignments[detected_idx] = stable_id
+            used_detected.add(detected_idx)
+            used_previous.add(stable_id)
+
+        assigned: List[HandLandmarks] = []
+        for detected_idx, detected in enumerate(hands):
+            center, _, _ = detected_info[detected_idx]
+            best_id = assignments.get(detected_idx)
             if best_id is None:
+                if self._is_duplicate_detection(detected_idx, detected_info, set(assignments)):
+                    continue
                 best_id = self._next_stable_hand_id
                 self._next_stable_hand_id += 1
                 self._new_hand_guard_frames[best_id] = max(
                     self._new_hand_guard_frames.get(best_id, 0),
                     int(config.TRACKING_NEW_HAND_HIT_BLOCK_FRAMES),
                 )
-            used_previous.add(best_id)
             next_centers[best_id] = (center[0], center[1], detected.label)
             assigned.append(
                 HandLandmarks(
@@ -458,48 +460,25 @@ class HandTracker:
         self._tracked_hand_centers = next_centers
         return assigned
 
-    def _deduplicate_hands(self, hands: List[HandLandmarks]) -> List[HandLandmarks]:
-        if not config.TRACKING_DEDUPLICATE_HANDS or len(hands) < 2:
-            return hands
-
-        kept: List[HandLandmarks] = []
-        for hand in hands:
-            if any(self._hands_are_duplicates(hand, existing) for existing in kept):
-                continue
-            kept.append(hand)
-        return kept
-
-    def _hands_are_duplicates(self, first: HandLandmarks, second: HandLandmarks) -> bool:
-        if not first.landmarks or not second.landmarks:
+    def _is_duplicate_detection(
+        self,
+        detected_idx: int,
+        detected_info: List[Tuple[Tuple[float, float], float, str]],
+        assigned_detected: set[int],
+    ) -> bool:
+        if not assigned_detected:
             return False
-        label_matches = first.label == second.label or "Unknown" in {first.label, second.label}
-        if not label_matches:
-            return False
-
-        first_scale = self._hand_scale(first.landmarks)
-        second_scale = self._hand_scale(second.landmarks)
-        scale = max(1.0, min(first_scale, second_scale))
-        center_limit = min(
-            float(config.TRACKING_DUPLICATE_HAND_MAX_CENTER_DISTANCE_PX),
-            scale * float(config.TRACKING_DUPLICATE_HAND_CENTER_DISTANCE_RATIO),
-        )
-        landmark_limit = min(
-            float(config.TRACKING_DUPLICATE_HAND_MAX_LANDMARK_DISTANCE_PX),
-            scale * float(config.TRACKING_DUPLICATE_HAND_LANDMARK_DISTANCE_RATIO),
-        )
-
-        first_center = self._hand_center(first.landmarks)
-        second_center = self._hand_center(second.landmarks)
-        if math.hypot(first_center[0] - second_center[0], first_center[1] - second_center[1]) > center_limit:
-            return False
-
-        distances = [
-            math.hypot(float(ax) - float(bx), float(ay) - float(by))
-            for (ax, ay, _), (bx, by, _) in zip(first.landmarks, second.landmarks)
-        ]
-        if not distances:
-            return False
-        return (sum(distances) / len(distances)) <= landmark_limit
+        center, scale, _ = detected_info[detected_idx]
+        duplicate_distance = max(48.0, min(scale * 0.35, float(config.STABLE_HAND_ID_MAX_DISTANCE_PX) * 0.65))
+        for assigned_idx in assigned_detected:
+            assigned_center, assigned_scale, _ = detected_info[assigned_idx]
+            threshold = max(
+                duplicate_distance,
+                max(48.0, min(assigned_scale * 0.35, float(config.STABLE_HAND_ID_MAX_DISTANCE_PX) * 0.65)),
+            )
+            if math.hypot(center[0] - assigned_center[0], center[1] - assigned_center[1]) <= threshold:
+                return True
+        return False
 
     def _stabilize_with_optical_flow(self, frame_bgr, hands: List[HandLandmarks]) -> List[HandLandmarks]:
         gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
@@ -604,7 +583,7 @@ class HandTracker:
 
         self._missed_frame_count += 1
         if self._missed_frame_count > config.TRACKING_BRIDGE_MAX_FRAMES:
-            self._clear_after_miss(frame_bgr, force=True)
+            self._clear_after_miss(frame_bgr)
             return []
 
         predictions = self._optical_flow_predictions_for_keys(
@@ -676,11 +655,7 @@ class HandTracker:
         self._last_good_hands = self._copy_hands(bridged_hands)
         return bridged_hands
 
-    def _clear_after_miss(self, frame_bgr, force: bool = False) -> None:
-        self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        grace_frames = int(getattr(config, "TRACKING_STATE_GRACE_MISSED_FRAMES", 0))
-        if not force and self._empty_detection_frames <= grace_frames:
-            return
+    def _clear_after_miss(self, frame_bgr) -> None:
         self._smoothed_points.clear()
         self._tracked_hand_centers.clear()
         self._flow_points.clear()
@@ -688,6 +663,7 @@ class HandTracker:
         self._missed_frame_count = 0
         self._reacquire_guard_frames = 0
         self._new_hand_guard_frames.clear()
+        self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
 
     def _optical_flow_predictions(
         self,

@@ -119,7 +119,7 @@ python main.py --camera 0 --mode piano
 - `--record3d-depth-unit auto|m|cm|mm`：深度单位，默认自动判断。
 - `--depth-contact-mode auto|off|assist|required`：RGB-D 接触判定模式。`assist` 只在深度明确显示手指离桌面很高时拦截；`required` 要求明确接触才触发。
 - `--depth-contact-threshold 0.075`：指尖高于桌面多少米以内算接触。
-- `--depth-release-threshold 0.14`：指尖高于桌面多少米以上算明确离桌面。
+- `--depth-release-threshold 0.10`：指尖高于桌面多少米以上算明确离桌面。
 
 摄像头诊断：
 
@@ -280,7 +280,7 @@ python main.py --camera 0 --backend dshow --mode piano --air-test --debug
 
 - `q`：退出。
 - `m`：切换 drum/piano。
-- `r`：清空 loop。
+- `r`：清空 loop，并重置当前触发器 pressed 状态。
 - `space`：播放/暂停 loop。
 - `e`：开始/停止录制 loop，作为手势录制的备用控制。
 - `d`：采集多帧 Record3D depth，校准桌面深度并生成桌面贴合钢琴平面。校准时手需要离开琴键区域。
@@ -330,8 +330,6 @@ python replay_session.py data/sessions/test01 --depth-contact-mode required --ou
 
 回放会生成 `replay_hits.csv`、`replay_miss_reasons.csv` 和 `replay_summary.json`。
 
-Record3D 钢琴录制会在每帧的 `depth_observations` 里保存可回放的轻量 3D 观测：指尖深度、局部桌面深度、桌面来源、采样半径、有效样本数、相对桌面的高度和 contact 状态。它不保存完整 depth 视频，所以文件仍然比较小，但足够离线重放 3D hit detector。
-
 追踪质量基准报告：
 
 ```bash
@@ -368,14 +366,6 @@ python tools/reprocess_session_tracking.py data/sessions/record3d_refine_off --o
 ```bash
 python tools/run_benchmark_suite.py data/sessions/record3d_refine_off data/sessions/record3d_refine_on --skip-uncalibrated-depth
 ```
-
-3D 钢琴触发的专用 benchmark：
-
-```bash
-python tools/run_3d_benchmark.py
-```
-
-默认会扫描 `data/sessions/benchmarks_3d/*`，用 `PIANO_TRIGGER_MODE=3d` 回放，并把输出写到 `data/benchmarks/3d_trigger/`。如果某个 session 里有 `annotations.csv`，它会按 `80ms` 容差和音符匹配计算 precision、recall、F1；如果还没有人工标注，会标记为 `needs_annotations`，只输出预测 hits 和 miss reasons，避免把未标注视频误当成通过。
 
 默认量化目标是：
 
@@ -605,18 +595,6 @@ velocity_y = (current_y - previous_y) / dt
 
 hit 后进入 pressed 状态。只有当指尖明显抬起，或离开当前区域，才允许下一次触发。Record3D 使用 `--depth-contact-mode required` 时，release 还会检查指尖是否仍然贴近桌面；如果 depth 认为还在接触，就不会因为 2D landmark 抖动而解除 pressed 状态。
 
-Record3D 下可以切换 piano 触发策略：
-
-```bash
-python main.py --camera-source record3d --mode piano --piano-trigger-mode 2d
-python main.py --camera-source record3d --mode piano --piano-trigger-mode hybrid
-python main.py --camera-source record3d --mode piano --piano-trigger-mode 3d
-```
-
-`2d` 是原来的像素/相对指节运动状态机。`hybrid` 是 2D 加保守 depth 补充，旧的 `--piano-depth-trigger` 等价于这个模式。`3d` 会把 Record3D 的 `height_above_desk_m` 作为 piano hit/release 的主判定：2D 仍用于判断指尖落在哪个琴键区域内，但不再决定是否击键。
-
-3D-only 模式会在指尖高于 `PIANO_3D_ARM_HEIGHT_M` 后 armed，快速落到 `PIANO_3D_PRESS_HEIGHT_M` 以内并满足 `PIANO_3D_MIN_DROP_M` / `PIANO_3D_STRIKE_MIN_VELOCITY_M_S` 后触发；抬到 `PIANO_3D_RELEASE_HEIGHT_M` 以上后 release。当前 3D 参数来自已有 `bench_*` 回放集：`PIANO_3D_ARM_HEIGHT_M=0.060`、`PIANO_3D_RELEASE_HEIGHT_M=0.055`、`PIANO_3D_PRESS_HEIGHT_M=0.020`、`PIANO_3D_MIN_DROP_M=0.040`、`PIANO_3D_FALLING_VELOCITY_M_S=0.14`、`PIANO_3D_STRIKE_MIN_VELOCITY_M_S=0.22`。
-
 FPS 低时通常不是摄像头本身慢，而是实时管线里有几项很吃 CPU：MediaPipe 手部追踪、透视钢琴图层合成、手部抠图、debug 清晰度指标和 session 录制。当前版本已经缓存钢琴透视贴图、降低默认 MediaPipe 输入宽度、降低手部 mask 模糊半径，并让 debug 画质指标按间隔采样。如果仍然低于 20 FPS，优先尝试 `--max-hands 1 --tracking-max-width 360 --no-hand-cutout`。
 
 ### RGB-D Contact Gating
@@ -662,11 +640,11 @@ Piano 模式单独使用更低的视觉速度范围：`PIANO_HIT_MIN_VELOCITY`�
 ## 已知限制
 
 - 单目摄像头无法得到精确真实物理力，本项目只做相对力度估计。
-- MediaPipe 的 `z` 不等于真实物理深度；`--piano-trigger-mode 3d` 使用的是 Record3D depth 校准出的 `height_above_desk_m`。
-- Record3D/LiDAR depth 分辨率低于 RGB，指尖边缘会有噪声和空洞，所以默认 piano 触发仍是 `2d`。
+- MediaPipe 的 `z` 不等于真实物理深度，当前 hit detection 主要使用像素 y 方向速度。
+- Record3D/LiDAR depth 分辨率低于 RGB，指尖边缘会有噪声和空洞，所以默认只作为辅助证据。
 - Record3D 的 RGB/depth 对齐、画面旋转和镜像依赖手机安装方向；必要时用 `--record3d-rotate` 和 `--record3d-mirror` 调整。
 - 光照、摄像头角度、运动模糊、遮挡都会影响 landmarks 稳定性。
-- 当前版本使用校准得到的逐像素桌面 depth baseline，不依赖完整相机内参重建；它更像“局部桌面高度模型”，不是严格的物理 3D 网格。
+- 当前版本使用固定桌面 ROI，没有做桌面平面重建或四点标定。
 - `THUMB_UP` 在俯拍桌面视角下可能不如握拳和张掌稳定。
 
 ## 后续扩展
