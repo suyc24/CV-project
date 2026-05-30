@@ -402,6 +402,7 @@ class HandTracker:
             return hands
 
         previous = dict(self._tracked_hand_centers)
+        single_detected_hand = len(hands) == 1
         used_previous: set[int] = set()
         assigned: List[HandLandmarks] = []
         next_centers: Dict[int, Tuple[float, float, str]] = {}
@@ -412,10 +413,20 @@ class HandTracker:
             best_id: Optional[int] = None
             best_distance = float("inf")
             max_distance = max(float(config.STABLE_HAND_ID_MAX_DISTANCE_PX), scale * 0.75)
+            if single_detected_hand:
+                max_distance = max(
+                    max_distance,
+                    float(getattr(config, "STABLE_SINGLE_HAND_ID_MAX_DISTANCE_PX", max_distance)),
+                    scale * float(getattr(config, "STABLE_SINGLE_HAND_ID_SCALE_RATIO", 1.65)),
+                )
             for stable_id, (px, py, label) in previous.items():
                 if stable_id in used_previous:
                     continue
-                label_matches = label == detected.label or "Unknown" in {label, detected.label}
+                label_matches = (
+                    single_detected_hand
+                    or label == detected.label
+                    or "Unknown" in {label, detected.label}
+                )
                 if not label_matches:
                     continue
                 distance = math.hypot(center[0] - px, center[1] - py)
@@ -593,7 +604,7 @@ class HandTracker:
 
         self._missed_frame_count += 1
         if self._missed_frame_count > config.TRACKING_BRIDGE_MAX_FRAMES:
-            self._clear_after_miss(frame_bgr)
+            self._clear_after_miss(frame_bgr, force=True)
             return []
 
         predictions = self._optical_flow_predictions_for_keys(
@@ -665,7 +676,11 @@ class HandTracker:
         self._last_good_hands = self._copy_hands(bridged_hands)
         return bridged_hands
 
-    def _clear_after_miss(self, frame_bgr) -> None:
+    def _clear_after_miss(self, frame_bgr, force: bool = False) -> None:
+        self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        grace_frames = int(getattr(config, "TRACKING_STATE_GRACE_MISSED_FRAMES", 0))
+        if not force and self._empty_detection_frames <= grace_frames:
+            return
         self._smoothed_points.clear()
         self._tracked_hand_centers.clear()
         self._flow_points.clear()
@@ -673,7 +688,6 @@ class HandTracker:
         self._missed_frame_count = 0
         self._reacquire_guard_frames = 0
         self._new_hand_guard_frames.clear()
-        self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
 
     def _optical_flow_predictions(
         self,

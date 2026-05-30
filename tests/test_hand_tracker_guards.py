@@ -104,9 +104,25 @@ def test_duplicate_full_frame_hand_is_removed():
     assert len(hands) == 1
 
 
+def test_single_hand_reuses_id_across_label_flip_and_jump():
+    tracker = FakeTracker(
+        [
+            [make_hand(label="Right")],
+            [make_hand(offset_x=260, label="Left")],
+            [make_hand(offset_x=280, label="Right")],
+        ]
+    )
+    frame = np.zeros((80, 80, 3), dtype=np.uint8)
+
+    ids = [tracker.process(frame)[0].hand_id for _ in range(3)]
+
+    assert ids == [0, 0, 0]
+
+
 if __name__ == "__main__":
     test_new_hand_is_marked_unstable_for_guard_frames()
     test_full_miss_reacquire_gets_longer_guard()
     test_partial_roi_detection_reacquires_full_frame_for_second_hand()
     test_duplicate_full_frame_hand_is_removed()
+    test_single_hand_reuses_id_across_label_flip_and_jump()
     print("hand tracker guard tests passed")

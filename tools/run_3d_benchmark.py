@@ -21,7 +21,7 @@ from replay_session import (
     write_hits_csv,
     write_reason_csv,
 )
-from tools.evaluate_hit_events import evaluate_events, read_events
+from tools.evaluate_hit_events import Event, evaluate_events, read_events
 
 
 def parse_args() -> argparse.Namespace:
@@ -135,8 +135,7 @@ def run_session(session_dir: Path, output_dir: Path, args: argparse.Namespace) -
     status = "needs_annotations"
     passed = False
     if annotations_path.exists():
-        predicted = read_events(hits_path, "timestamp", "note_id", 0.0)
-        truth = read_events(annotations_path, "onset", "note", 0.0)
+        predicted, truth, timebase = read_benchmark_events(hits_path, annotations_path)
         result = evaluate_events(
             predicted,
             truth,
@@ -144,6 +143,7 @@ def run_session(session_dir: Path, output_dir: Path, args: argparse.Namespace) -
             match_notes=not args.no_match_notes,
         )
         result = normalize_empty_truth_result(result)
+        result["timebase"] = timebase
         passed = passes_targets(result, args)
         status = "passed" if passed else "failed"
 
@@ -205,6 +205,61 @@ def normalize_empty_truth_result(result: dict[str, Any]) -> dict[str, Any]:
     result["recall"] = 1.0
     result["f1"] = 1.0 if false_positives == 0 else 0.0
     return result
+
+
+def read_benchmark_events(hits_path: Path, annotations_path: Path) -> tuple[list[Event], list[Event], str]:
+    truth_rows = read_annotation_rows(annotations_path)
+    fps = next((row.get("fps") for row in truth_rows if row.get("fps")), None)
+    has_frame_labels = bool(fps) and any(row.get("frame_index") for row in truth_rows)
+    if not has_frame_labels:
+        return (
+            read_events(hits_path, "timestamp", "note_id", 0.0),
+            read_events(annotations_path, "onset", "note", 0.0),
+            "timestamp",
+        )
+
+    fps_value = float(fps)
+    predicted = read_frame_events(hits_path, "frame_index", "note_id", fps_value)
+    truth = rows_to_frame_events(truth_rows, "frame_index", "note", fps_value)
+    return predicted, truth, "frame_index/fps"
+
+
+def read_annotation_rows(path: Path) -> list[dict[str, str]]:
+    import csv
+
+    with path.open("r", newline="", encoding="utf-8-sig") as file:
+        return list(csv.DictReader(file))
+
+
+def read_frame_events(path: Path, frame_column: str, note_column: str, fps: float) -> list[Event]:
+    import csv
+
+    with path.open("r", newline="", encoding="utf-8-sig") as file:
+        rows = list(csv.DictReader(file))
+    return rows_to_frame_events(rows, frame_column, note_column, fps)
+
+
+def rows_to_frame_events(
+    rows: list[dict[str, str]],
+    frame_column: str,
+    note_column: str,
+    fps: float,
+) -> list[Event]:
+    events: list[Event] = []
+    if fps <= 0:
+        return events
+    for row in rows:
+        frame_value = row.get(frame_column)
+        if frame_value is None or frame_value == "":
+            continue
+        try:
+            frame_index = int(float(frame_value))
+        except ValueError:
+            continue
+        note = row.get(note_column)
+        events.append(Event(time_s=frame_index / fps, note=note.lower() if note else None))
+    events.sort(key=lambda event: event.time_s)
+    return events
 
 
 def passes_targets(result: dict[str, Any], args: argparse.Namespace) -> bool:

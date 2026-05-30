@@ -1,0 +1,64 @@
+{
+  "session": "data/sessions/benchmarks_3d/bench3d_hover_no_contact",
+  "status": "passed",
+  "passed": true,
+  "frames": 277,
+  "predicted_hits": 0,
+  "online_hits": 18,
+  "hits_csv": "data/benchmarks/3d_trigger/bench3d_hover_no_contact/predicted_hits.csv",
+  "miss_reasons_csv": "data/benchmarks/3d_trigger/bench3d_hover_no_contact/miss_reasons.csv",
+  "annotations_csv": "data/sessions/benchmarks_3d/bench3d_hover_no_contact/annotations.csv",
+  "evaluation": {
+    "predicted_events": 0,
+    "ground_truth_events": 0,
+    "matched_events": 0,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "tolerance_s": 0.08,
+    "match_notes": true,
+    "mean_abs_error_s": null,
+    "matches_preview": [],
+    "timebase": "timestamp"
+  },
+  "top_reasons": [
+    [
+      "depth_armed",
+      793
+    ],
+    [
+      "unstable_tracking",
+      139
+    ],
+    [
+      "missing_depth_hand_depth_guard",
+      108
+    ],
+    [
+      "no_zone",
+      41
+    ],
+    [
+      "depth_landing_guard",
+      34
+    ],
+    [
+      "depth_lifted",
+      22
+    ],
+    [
+      "depth_recent_velocity",
+      4
+    ],
+    [
+      "depth_warming",
+      3
+    ],
+    [
+      "depth_air",
+      1
+    ]
+  ]
+}

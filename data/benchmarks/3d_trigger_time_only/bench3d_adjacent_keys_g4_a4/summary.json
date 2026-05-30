@@ -1,0 +1,63 @@
+{
+  "session": "data/sessions/benchmarks_3d/bench3d_adjacent_keys_g4_a4",
+  "status": "failed",
+  "passed": false,
+  "frames": 330,
+  "predicted_hits": 1,
+  "online_hits": 1,
+  "hits_csv": "data/benchmarks/3d_trigger_time_only/bench3d_adjacent_keys_g4_a4/predicted_hits.csv",
+  "miss_reasons_csv": "data/benchmarks/3d_trigger_time_only/bench3d_adjacent_keys_g4_a4/miss_reasons.csv",
+  "annotations_csv": "data/sessions/benchmarks_3d/bench3d_adjacent_keys_g4_a4/annotations.csv",
+  "evaluation": {
+    "predicted_events": 1,
+    "ground_truth_events": 12,
+    "matched_events": 0,
+    "false_positives": 1,
+    "false_negatives": 12,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "tolerance_s": 0.08,
+    "match_notes": false,
+    "mean_abs_error_s": null,
+    "matches_preview": []
+  },
+  "top_reasons": [
+    [
+      "depth_unavailable",
+      1121
+    ],
+    [
+      "depth_lift_too_low",
+      212
+    ],
+    [
+      "unstable_tracking",
+      138
+    ],
+    [
+      "depth_resting",
+      91
+    ],
+    [
+      "depth_air",
+      26
+    ],
+    [
+      "no_zone",
+      20
+    ],
+    [
+      "depth_armed",
+      5
+    ],
+    [
+      "depth_lifted",
+      1
+    ],
+    [
+      "hit",
+      1
+    ]
+  ]
+}

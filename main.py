@@ -49,6 +49,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--camera-source", choices=["webcam", "record3d"], default="webcam", help="Video source")
     parser.add_argument("--camera", type=int, default=0, help="OpenCV camera index")
     parser.add_argument("--mode", choices=["drum", "piano"], default="drum", help="Instrument mode")
+    parser.add_argument(
+        "--piano-demo",
+        action="store_true",
+        help="Record3D piano demo preset: piano mode, 3D timing, conservative five-finger triggering.",
+    )
     parser.add_argument("--debug", action="store_true", help="Show velocity and state debug overlays")
     parser.add_argument("--display-scale", type=float, default=config.DISPLAY_SCALE, help="Scale factor for the OpenCV display window")
     parser.add_argument("--window-width", type=int, default=config.DISPLAY_WINDOW_WIDTH, help="Optional display window width")
@@ -208,6 +213,7 @@ def open_camera(camera_index: int, settings: CameraSettings, warmup_frames: int 
 
 def main() -> int:
     args = parse_args()
+    apply_piano_demo_preset(args)
     apply_runtime_tracking_config(args)
     camera_settings = build_camera_settings(args) if args.camera_source == "webcam" else CameraSettings()
     try:
@@ -303,7 +309,15 @@ def main() -> int:
     config.SHOW_FINGERTIP_MARKERS = config.SHOW_FINGERTIP_MARKERS and not args.no_fingertip_markers
 
     layout = InstrumentLayout(args.mode, roi_ratios=instrument_roi)
-    trigger_fingers = tuple(finger_id for finger_id in config.TRIGGER_FINGER_IDS if finger_id != 4) if args.no_trigger_thumb else config.TRIGGER_FINGER_IDS
+    trigger_fingers = (
+        tuple(finger_id for finger_id in config.PIANO_DEMO_FINGER_IDS if finger_id != 4)
+        if args.piano_demo and args.no_trigger_thumb
+        else tuple(config.PIANO_DEMO_FINGER_IDS)
+        if args.piano_demo
+        else tuple(finger_id for finger_id in config.TRIGGER_FINGER_IDS if finger_id != 4)
+        if args.no_trigger_thumb
+        else config.TRIGGER_FINGER_IDS
+    )
     hit_detector = HitDetector(finger_ids=trigger_fingers)
     loop_station = LoopStation()
     gesture_recognizer = GestureRecognizer()
@@ -600,6 +614,21 @@ def should_defer_recording_until_depth_ready(args: argparse.Namespace) -> bool:
     )
 
 
+def apply_piano_demo_preset(args: argparse.Namespace) -> None:
+    if not args.piano_demo:
+        return
+    if not arg_was_provided(("mode",)):
+        args.mode = "piano"
+    if not arg_was_provided(("camera-source",)):
+        args.camera_source = "record3d"
+    if not arg_was_provided(("piano-trigger-mode",)):
+        args.piano_trigger_mode = "3d"
+    if not arg_was_provided(("depth-contact-mode",)):
+        args.depth_contact_mode = "assist"
+    if not arg_was_provided(("piano-sensitivity",)):
+        args.piano_sensitivity = "stable"
+
+
 def create_session_recorder(
     args: argparse.Namespace,
     camera_settings: CameraSettings,
@@ -704,11 +733,28 @@ def apply_runtime_tracking_config(args: argparse.Namespace) -> None:
     config.DEPTH_MIN_CONFIDENCE = args.depth_min_confidence
     config.DEPTH_AUTO_BASELINE_WHEN_UNCALIBRATED = args.auto_depth_baseline
     config.PIANO_TRIGGER_MODE = args.piano_trigger_mode
+    if (
+        not arg_was_provided(("piano-trigger-mode",))
+        and args.piano_depth_trigger is None
+        and args.camera_source == "record3d"
+        and args.mode == "piano"
+        and not args.paper_keyboard
+        and config.DEPTH_CONTACT_MODE != "off"
+    ):
+        config.PIANO_TRIGGER_MODE = "3d"
     if args.piano_depth_trigger is True:
         config.PIANO_TRIGGER_MODE = "hybrid"
     elif args.piano_depth_trigger is False:
         config.PIANO_TRIGGER_MODE = "2d"
     config.PIANO_DEPTH_TRIGGER_ENABLED = config.PIANO_TRIGGER_MODE != "2d"
+    if args.trigger_thumb or (args.piano_demo and not args.no_trigger_thumb):
+        config.PIANO_3D_IGNORE_THUMB = False
+    elif args.no_trigger_thumb:
+        config.PIANO_3D_IGNORE_THUMB = True
+    if config.PIANO_TRIGGER_MODE == "3d":
+        config.PIANO_MAX_HITS_PER_HAND_PER_FRAME = 1
+        config.PIANO_3D_MISSING_DEPTH_FALLBACK_ENABLED = True
+        config.PIANO_3D_MISSING_DEPTH_ALLOWED_ZONES_BY_FINGER = {}
 
 
 def print_camera_settings(label: str, settings: CameraSettings) -> None:

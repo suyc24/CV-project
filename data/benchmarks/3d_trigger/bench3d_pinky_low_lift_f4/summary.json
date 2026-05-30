@@ -1,0 +1,86 @@
+{
+  "session": "data/sessions/benchmarks_3d/bench3d_pinky_low_lift_f4",
+  "status": "failed",
+  "passed": false,
+  "frames": 299,
+  "predicted_hits": 5,
+  "online_hits": 1,
+  "hits_csv": "data/benchmarks/3d_trigger/bench3d_pinky_low_lift_f4/predicted_hits.csv",
+  "miss_reasons_csv": "data/benchmarks/3d_trigger/bench3d_pinky_low_lift_f4/miss_reasons.csv",
+  "annotations_csv": "data/sessions/benchmarks_3d/bench3d_pinky_low_lift_f4/annotations.csv",
+  "evaluation": {
+    "predicted_events": 5,
+    "ground_truth_events": 8,
+    "matched_events": 1,
+    "false_positives": 4,
+    "false_negatives": 7,
+    "precision": 0.2,
+    "recall": 0.125,
+    "f1": 0.15384615384615385,
+    "tolerance_s": 0.08,
+    "match_notes": true,
+    "mean_abs_error_s": 0.07678132678132599,
+    "matches_preview": [
+      {
+        "gt_index": 3,
+        "pred_index": 3,
+        "gt_time": 13.820638820638822,
+        "pred_time": 13.743857493857496,
+        "abs_error_s": 0.07678132678132599,
+        "gt_note": "f4",
+        "pred_note": "f4"
+      }
+    ],
+    "timebase": "frame_index/fps"
+  },
+  "top_reasons": [
+    [
+      "missing_depth_resting",
+      648
+    ],
+    [
+      "pressed",
+      269
+    ],
+    [
+      "depth_lift_too_low",
+      105
+    ],
+    [
+      "depth_resting",
+      98
+    ],
+    [
+      "unstable_tracking",
+      97
+    ],
+    [
+      "no_zone",
+      81
+    ],
+    [
+      "missing_depth_key_top",
+      37
+    ],
+    [
+      "missing_depth_abs_short_drop",
+      23
+    ],
+    [
+      "depth_air",
+      23
+    ],
+    [
+      "missing_depth_other_finger_active",
+      17
+    ],
+    [
+      "missing_depth_armed",
+      15
+    ],
+    [
+      "missing_depth_rest_warming",
+      9
+    ]
+  ]
+}

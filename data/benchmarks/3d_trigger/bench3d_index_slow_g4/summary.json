@@ -1,0 +1,86 @@
+{
+  "session": "data/sessions/benchmarks_3d/bench3d_index_slow_g4",
+  "status": "failed",
+  "passed": false,
+  "frames": 298,
+  "predicted_hits": 4,
+  "online_hits": 2,
+  "hits_csv": "data/benchmarks/3d_trigger/bench3d_index_slow_g4/predicted_hits.csv",
+  "miss_reasons_csv": "data/benchmarks/3d_trigger/bench3d_index_slow_g4/miss_reasons.csv",
+  "annotations_csv": "data/sessions/benchmarks_3d/bench3d_index_slow_g4/annotations.csv",
+  "evaluation": {
+    "predicted_events": 4,
+    "ground_truth_events": 8,
+    "matched_events": 1,
+    "false_positives": 3,
+    "false_negatives": 7,
+    "precision": 0.25,
+    "recall": 0.125,
+    "f1": 0.16666666666666666,
+    "tolerance_s": 0.08,
+    "match_notes": true,
+    "mean_abs_error_s": 0.0,
+    "matches_preview": [
+      {
+        "gt_index": 5,
+        "pred_index": 2,
+        "gt_time": 15.545737195221731,
+        "pred_time": 15.545737195221731,
+        "abs_error_s": 0.0,
+        "gt_note": "g4",
+        "pred_note": "g4"
+      }
+    ],
+    "timebase": "frame_index/fps"
+  },
+  "top_reasons": [
+    [
+      "missing_depth_resting",
+      591
+    ],
+    [
+      "unstable_tracking",
+      252
+    ],
+    [
+      "depth_armed",
+      96
+    ],
+    [
+      "missing_depth_other_finger_active",
+      63
+    ],
+    [
+      "depth_lift_too_low",
+      57
+    ],
+    [
+      "pressed",
+      51
+    ],
+    [
+      "missing_depth_hand_depth_guard",
+      48
+    ],
+    [
+      "missing_depth_abs_lift",
+      43
+    ],
+    [
+      "missing_depth_armed",
+      41
+    ],
+    [
+      "depth_air",
+      39
+    ],
+    [
+      "missing_depth_abs_short_drop",
+      28
+    ],
+    [
+      "depth_unavailable",
+      17
+    ]
+  ]
+}

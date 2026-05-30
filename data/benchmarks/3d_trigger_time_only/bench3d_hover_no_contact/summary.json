@@ -1,0 +1,59 @@
+{
+  "session": "data/sessions/benchmarks_3d/bench3d_hover_no_contact",
+  "status": "failed",
+  "passed": false,
+  "frames": 277,
+  "predicted_hits": 18,
+  "online_hits": 18,
+  "hits_csv": "data/benchmarks/3d_trigger_time_only/bench3d_hover_no_contact/predicted_hits.csv",
+  "miss_reasons_csv": "data/benchmarks/3d_trigger_time_only/bench3d_hover_no_contact/miss_reasons.csv",
+  "annotations_csv": "data/sessions/benchmarks_3d/bench3d_hover_no_contact/annotations.csv",
+  "evaluation": {
+    "predicted_events": 18,
+    "ground_truth_events": 0,
+    "matched_events": 0,
+    "false_positives": 18,
+    "false_negatives": 0,
+    "precision": 0.0,
+    "recall": 1.0,
+    "f1": 0.0,
+    "tolerance_s": 0.08,
+    "match_notes": false,
+    "mean_abs_error_s": null,
+    "matches_preview": []
+  },
+  "top_reasons": [
+    [
+      "depth_armed",
+      792
+    ],
+    [
+      "unstable_tracking",
+      139
+    ],
+    [
+      "depth_unavailable",
+      108
+    ],
+    [
+      "pressed",
+      42
+    ],
+    [
+      "no_zone",
+      41
+    ],
+    [
+      "hit",
+      18
+    ],
+    [
+      "depth_resting",
+      3
+    ],
+    [
+      "cooldown",
+      2
+    ]
+  ]
+}
