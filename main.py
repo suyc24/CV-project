@@ -159,6 +159,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--record3d-mirror", action="store_true", help="Mirror Record3D frames horizontally")
     parser.add_argument("--record3d-depth-unit", choices=["auto", "m", "cm", "mm"], default="auto", help="Record3D depth unit")
     parser.add_argument("--depth-contact-mode", choices=["auto", "off", "assist", "required"], default="auto", help="How RGB-D contact evidence gates piano hits")
+    parser.add_argument("--piano-depth-trigger", dest="piano_depth_trigger", action="store_true", help="Use Record3D height above desk as an extra piano hit signal when depth is available")
+    parser.add_argument("--no-piano-depth-trigger", dest="piano_depth_trigger", action="store_false", help="Use the 2D fingertip motion piano hit detector even when depth is available")
+    parser.set_defaults(piano_depth_trigger=config.PIANO_DEPTH_TRIGGER_ENABLED)
     parser.add_argument("--depth-contact-threshold", type=float, default=config.DEPTH_CONTACT_THRESHOLD_M, help="Meters above calibrated desk considered contact")
     parser.add_argument("--depth-release-threshold", type=float, default=config.DEPTH_RELEASE_THRESHOLD_M, help="Meters above calibrated desk considered definitely in air")
     parser.add_argument("--depth-baseline-frames", type=int, default=config.DEPTH_BASELINE_FRAMES, help="Frames used for desk depth calibration")
@@ -694,6 +697,7 @@ def apply_runtime_tracking_config(args: argparse.Namespace) -> None:
     config.DEPTH_BASELINE_FRAMES = args.depth_baseline_frames
     config.DEPTH_MIN_CONFIDENCE = args.depth_min_confidence
     config.DEPTH_AUTO_BASELINE_WHEN_UNCALIBRATED = args.auto_depth_baseline
+    config.PIANO_DEPTH_TRIGGER_ENABLED = args.piano_depth_trigger
 
 
 def print_camera_settings(label: str, settings: CameraSettings) -> None:

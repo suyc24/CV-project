@@ -25,6 +25,14 @@ def air_observation():
     return SimpleNamespace(contact=False, height_above_desk_m=0.12, reason="air")
 
 
+def depth_height_observation(height_m: float):
+    return SimpleNamespace(
+        contact=height_m <= config.PIANO_DEPTH_PRESS_HEIGHT_M,
+        height_above_desk_m=height_m,
+        reason="contact" if height_m <= config.PIANO_DEPTH_PRESS_HEIGHT_M else "above_desk",
+    )
+
+
 def test_all_fingertips_can_trigger():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     zone = zones[0]
@@ -157,6 +165,8 @@ def test_depth_contact_prevents_false_release_retrigger():
 def test_depth_contact_blocks_passive_piano_arm():
     previous = config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT
     config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT = True
+    previous_depth_trigger = config.PIANO_DEPTH_TRIGGER_ENABLED
+    config.PIANO_DEPTH_TRIGGER_ENABLED = False
     try:
         zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
         zone = zones[0]
@@ -172,6 +182,59 @@ def test_depth_contact_blocks_passive_piano_arm():
         assert not hits
     finally:
         config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT = previous
+        config.PIANO_DEPTH_TRIGGER_ENABLED = previous_depth_trigger
+
+
+def test_depth_height_can_trigger_with_flat_2d_motion():
+    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
+    config.PIANO_DEPTH_TRIGGER_ENABLED = True
+    try:
+        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+        zone = zones[0]
+        detector = HitDetector()
+        x = zone.center[0]
+        y = zone.center[1]
+
+        detector.update(
+            [hand_with_finger(0, 8, x, y)],
+            zones,
+            100.0,
+            {(0, 8): depth_height_observation(0.090)},
+        )
+        hits = detector.update(
+            [hand_with_finger(0, 8, x, y)],
+            zones,
+            100.08,
+            {(0, 8): depth_height_observation(0.012)},
+        )
+
+        assert len(hits) == 1
+        assert hits[0].finger_id == 8
+    finally:
+        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
+
+
+def test_depth_height_release_allows_retrigger_with_flat_2d_motion():
+    previous = config.PIANO_DEPTH_TRIGGER_ENABLED
+    config.PIANO_DEPTH_TRIGGER_ENABLED = True
+    try:
+        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+        zone = zones[0]
+        detector = HitDetector()
+        x = zone.center[0]
+        y = zone.center[1]
+
+        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.0, {(0, 8): depth_height_observation(0.090)})
+        hits = detector.update([hand_with_finger(0, 8, x, y)], zones, 100.08, {(0, 8): depth_height_observation(0.012)})
+        assert len(hits) == 1
+
+        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.20, {(0, 8): depth_height_observation(0.080)})
+        detector.update([hand_with_finger(0, 8, x, y)], zones, 100.28, {(0, 8): depth_height_observation(0.080)})
+        hits = detector.update([hand_with_finger(0, 8, x, y)], zones, 100.36, {(0, 8): depth_height_observation(0.012)})
+
+        assert len(hits) == 1
+    finally:
+        config.PIANO_DEPTH_TRIGGER_ENABLED = previous
 
 
 def test_piano_zone_mapping_sticks_near_boundary():
@@ -217,6 +280,8 @@ if __name__ == "__main__":
     test_clear_lift_allows_retrigger()
     test_depth_contact_prevents_false_release_retrigger()
     test_depth_contact_blocks_passive_piano_arm()
+    test_depth_height_can_trigger_with_flat_2d_motion()
+    test_depth_height_release_allows_retrigger_with_flat_2d_motion()
     test_piano_zone_mapping_sticks_near_boundary()
     test_perspective_key_mapping_uses_landing_x()
     print("synthetic hit detector tests passed")
