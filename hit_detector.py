@@ -285,7 +285,7 @@ class HitDetector:
         return score
 
     def _hit_velocity(self, state: FingerState, velocity_y: float) -> float:
-        if config.PIANO_DEPTH_TRIGGER_ENABLED and state.max_down_depth_velocity_m_s > 0:
+        if self._piano_trigger_mode() != "2d" and state.max_down_depth_velocity_m_s > 0:
             depth_velocity_as_px = state.max_down_depth_velocity_m_s * 1000.0
             velocity_y = max(velocity_y, depth_velocity_as_px)
         if config.PIANO_USE_RELATIVE_FINGER_MOTION:
@@ -415,7 +415,10 @@ class HitDetector:
             state.last_zone_id = None
             return
         if zone.kind == "piano":
-            if self._update_piano_depth_release_state(state, zone, current_time, depth_observation):
+            depth_release_handled = self._update_piano_depth_release_state(state, zone, current_time, depth_observation)
+            if depth_release_handled:
+                return
+            if self._piano_trigger_mode() == "3d":
                 return
             if config.PIANO_USE_RELATIVE_FINGER_MOTION:
                 lift_amount = (
@@ -549,10 +552,13 @@ class HitDetector:
         previous_relative_y: Optional[float],
         depth_observation: Optional["DepthObservation"],
     ) -> str:
-        if config.PIANO_DEPTH_TRIGGER_ENABLED:
+        trigger_mode = self._piano_trigger_mode()
+        if trigger_mode != "2d":
             depth_reason = self._piano_depth_miss_reason(state, zone, current_time, depth_observation)
             if depth_reason == "hit":
                 return "hit"
+            if trigger_mode == "3d":
+                return depth_reason or "depth_unavailable"
 
         arm_y = zone.y1 + config.PIANO_ARM_RATIO * zone.height
         motion_y = relative_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else finger_y
@@ -701,10 +707,18 @@ class HitDetector:
             return None
 
         depth_velocity = self._update_depth_velocity(state, height, current_time)
+        (
+            arm_height,
+            release_height,
+            press_height,
+            min_drop,
+            falling_velocity,
+            strike_velocity,
+        ) = self._piano_depth_thresholds()
         if state.depth_motion_state in {"raised", "falling"} and zone.sound_id != state.depth_armed_zone_id:
             state.depth_armed_zone_id = zone.sound_id
 
-        if height >= config.PIANO_DEPTH_ARM_HEIGHT_M and state.depth_motion_state != "falling":
+        if height >= arm_height and state.depth_motion_state != "falling":
             state.depth_motion_state = "raised"
             state.depth_armed_zone_id = zone.sound_id
             state.depth_falling_frames = 0
@@ -712,7 +726,7 @@ class HitDetector:
             state.max_down_depth_velocity_m_s = 0.0
             return "depth_armed"
 
-        if state.depth_motion_state == "falling" and height >= config.PIANO_DEPTH_RELEASE_HEIGHT_M:
+        if state.depth_motion_state == "falling" and height >= release_height:
             state.depth_motion_state = "raised"
             state.depth_armed_zone_id = zone.sound_id
             state.depth_falling_frames = 0
@@ -721,7 +735,7 @@ class HitDetector:
             return "depth_lifted"
 
         can_start_fall = state.depth_motion_state in {"raised", "falling"}
-        if can_start_fall and depth_velocity >= config.PIANO_DEPTH_FALLING_VELOCITY_M_S:
+        if can_start_fall and depth_velocity >= falling_velocity:
             if state.depth_motion_state != "falling":
                 state.depth_falling_frames = 1
                 state.depth_peak_height_m = max(state.depth_peak_height_m or height, height)
@@ -738,16 +752,43 @@ class HitDetector:
             return "depth_not_armed"
         if state.depth_falling_frames < config.PIANO_MIN_FALL_FRAMES:
             return "depth_falling"
-        if height > config.PIANO_DEPTH_PRESS_HEIGHT_M:
+        if height > press_height:
             return "depth_air"
 
         peak = state.depth_peak_height_m if state.depth_peak_height_m is not None else height
         drop = peak - height
-        if drop < config.PIANO_DEPTH_MIN_DROP_M:
+        if drop < min_drop:
             return "depth_short_drop"
-        if state.max_down_depth_velocity_m_s < config.PIANO_DEPTH_STRIKE_MIN_VELOCITY_M_S:
+        if state.max_down_depth_velocity_m_s < strike_velocity:
             return "depth_velocity"
         return "hit"
+
+    def _piano_trigger_mode(self) -> str:
+        mode = getattr(config, "PIANO_TRIGGER_MODE", "2d")
+        if mode in {"2d", "hybrid", "3d"}:
+            if mode == "2d" and getattr(config, "PIANO_DEPTH_TRIGGER_ENABLED", False):
+                return "hybrid"
+            return mode
+        return "hybrid" if getattr(config, "PIANO_DEPTH_TRIGGER_ENABLED", False) else "2d"
+
+    def _piano_depth_thresholds(self) -> Tuple[float, float, float, float, float, float]:
+        if self._piano_trigger_mode() == "3d":
+            return (
+                config.PIANO_3D_ARM_HEIGHT_M,
+                config.PIANO_3D_RELEASE_HEIGHT_M,
+                config.PIANO_3D_PRESS_HEIGHT_M,
+                config.PIANO_3D_MIN_DROP_M,
+                config.PIANO_3D_FALLING_VELOCITY_M_S,
+                config.PIANO_3D_STRIKE_MIN_VELOCITY_M_S,
+            )
+        return (
+            config.PIANO_DEPTH_ARM_HEIGHT_M,
+            config.PIANO_DEPTH_RELEASE_HEIGHT_M,
+            config.PIANO_DEPTH_PRESS_HEIGHT_M,
+            config.PIANO_DEPTH_MIN_DROP_M,
+            config.PIANO_DEPTH_FALLING_VELOCITY_M_S,
+            config.PIANO_DEPTH_STRIKE_MIN_VELOCITY_M_S,
+        )
 
     def _update_depth_velocity(self, state: FingerState, height: float, current_time: float) -> float:
         if state.previous_depth_height_m is None or state.previous_depth_timestamp is None:
@@ -824,15 +865,17 @@ class HitDetector:
         current_time: float,
         observation: Optional["DepthObservation"],
     ) -> bool:
-        if not config.PIANO_DEPTH_TRIGGER_ENABLED:
+        trigger_mode = self._piano_trigger_mode()
+        if trigger_mode == "2d":
             return False
         height = self._depth_height(observation)
         if height is None:
-            return False
+            return trigger_mode == "3d"
         state.previous_depth_height_m = height
         state.previous_depth_timestamp = current_time
 
-        if height >= config.PIANO_DEPTH_RELEASE_HEIGHT_M:
+        _, release_height, _, _, _, _ = self._piano_depth_thresholds()
+        if height >= release_height:
             state.depth_release_ready_frames += 1
         else:
             state.depth_release_ready_frames = 0
@@ -860,7 +903,7 @@ class HitDetector:
             state.max_down_depth_velocity_m_s = 0.0
             state.last_zone_id = zone.sound_id
             return True
-        return False
+        return trigger_mode == "3d"
 
     def _depth_still_contacting(self, observation: Optional["DepthObservation"]) -> bool:
         if not config.PIANO_DEPTH_RELEASE_GUARD or config.DEPTH_CONTACT_MODE == "off":

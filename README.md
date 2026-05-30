@@ -595,15 +595,17 @@ velocity_y = (current_y - previous_y) / dt
 
 hit 后进入 pressed 状态。只有当指尖明显抬起，或离开当前区域，才允许下一次触发。Record3D 使用 `--depth-contact-mode required` 时，release 还会检查指尖是否仍然贴近桌面；如果 depth 认为还在接触，就不会因为 2D landmark 抖动而解除 pressed 状态。
 
-Record3D 下也可以试验 3D 高度触发：
+Record3D 下可以切换 piano 触发策略：
 
 ```bash
-python main.py --camera-source record3d --mode piano --piano-depth-trigger
+python main.py --camera-source record3d --mode piano --piano-trigger-mode 2d
+python main.py --camera-source record3d --mode piano --piano-trigger-mode hybrid
+python main.py --camera-source record3d --mode piano --piano-trigger-mode 3d
 ```
 
-这个模式现在作为 2D 判定的补充，而不是替代：原来的像素/相对指节运动仍然正常工作；当 `height_above_desk_m` 显示指尖从高于 `PIANO_DEPTH_ARM_HEIGHT_M` 的位置快速落到 `PIANO_DEPTH_PRESS_HEIGHT_M` 以内，并满足 `PIANO_DEPTH_MIN_DROP_M` / `PIANO_DEPTH_STRIKE_MIN_VELOCITY_M_S` 时，会额外补一次 hit。它能解决“真实抬起很高，但画面里的 fingertip y 几乎没变”的问题，同时避免 depth 噪声直接接管整个状态机。
+`2d` 是原来的像素/相对指节运动状态机。`hybrid` 是 2D 加保守 depth 补充，旧的 `--piano-depth-trigger` 等价于这个模式。`3d` 会把 Record3D 的 `height_above_desk_m` 作为 piano hit/release 的主判定：2D 仍用于判断指尖落在哪个琴键区域内，但不再决定是否击键。
 
-当前默认深度触发参数来自已有 `bench_*` 回放集：`PIANO_DEPTH_ARM_HEIGHT_M=0.075`、`PIANO_DEPTH_RELEASE_HEIGHT_M=0.070`、`PIANO_DEPTH_PRESS_HEIGHT_M=0.020`、`PIANO_DEPTH_MIN_DROP_M=0.055`、`PIANO_DEPTH_FALLING_VELOCITY_M_S=0.20`、`PIANO_DEPTH_STRIKE_MIN_VELOCITY_M_S=0.40`。因为 Record3D depth 仍然有噪声和空洞，这个模式默认关闭；建议只在 Record3D 且桌面 depth 校准稳定时开启。
+3D-only 模式会在指尖高于 `PIANO_3D_ARM_HEIGHT_M` 后 armed，快速落到 `PIANO_3D_PRESS_HEIGHT_M` 以内并满足 `PIANO_3D_MIN_DROP_M` / `PIANO_3D_STRIKE_MIN_VELOCITY_M_S` 后触发；抬到 `PIANO_3D_RELEASE_HEIGHT_M` 以上后 release。当前 3D 参数来自已有 `bench_*` 回放集：`PIANO_3D_ARM_HEIGHT_M=0.060`、`PIANO_3D_RELEASE_HEIGHT_M=0.055`、`PIANO_3D_PRESS_HEIGHT_M=0.020`、`PIANO_3D_MIN_DROP_M=0.040`、`PIANO_3D_FALLING_VELOCITY_M_S=0.14`、`PIANO_3D_STRIKE_MIN_VELOCITY_M_S=0.22`。
 
 FPS 低时通常不是摄像头本身慢，而是实时管线里有几项很吃 CPU：MediaPipe 手部追踪、透视钢琴图层合成、手部抠图、debug 清晰度指标和 session 录制。当前版本已经缓存钢琴透视贴图、降低默认 MediaPipe 输入宽度、降低手部 mask 模糊半径，并让 debug 画质指标按间隔采样。如果仍然低于 20 FPS，优先尝试 `--max-hands 1 --tracking-max-width 360 --no-hand-cutout`。
 
@@ -650,11 +652,11 @@ Piano 模式单独使用更低的视觉速度范围：`PIANO_HIT_MIN_VELOCITY`�
 ## 已知限制
 
 - 单目摄像头无法得到精确真实物理力，本项目只做相对力度估计。
-- MediaPipe 的 `z` 不等于真实物理深度，当前 hit detection 主要使用像素 y 方向速度。
-- Record3D/LiDAR depth 分辨率低于 RGB，指尖边缘会有噪声和空洞，所以默认只作为辅助证据。
+- MediaPipe 的 `z` 不等于真实物理深度；`--piano-trigger-mode 3d` 使用的是 Record3D depth 校准出的 `height_above_desk_m`。
+- Record3D/LiDAR depth 分辨率低于 RGB，指尖边缘会有噪声和空洞，所以默认 piano 触发仍是 `2d`。
 - Record3D 的 RGB/depth 对齐、画面旋转和镜像依赖手机安装方向；必要时用 `--record3d-rotate` 和 `--record3d-mirror` 调整。
 - 光照、摄像头角度、运动模糊、遮挡都会影响 landmarks 稳定性。
-- 当前版本使用固定桌面 ROI，没有做桌面平面重建或四点标定。
+- 当前版本使用校准得到的逐像素桌面 depth baseline，不依赖完整相机内参重建；它更像“局部桌面高度模型”，不是严格的物理 3D 网格。
 - `THUMB_UP` 在俯拍桌面视角下可能不如握拳和张掌稳定。
 
 ## 后续扩展
