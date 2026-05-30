@@ -244,6 +244,10 @@ def _depth_observations_from_dict(rows: object) -> Dict[tuple[int, int], SimpleN
             contact=_optional_bool(row.get("contact")),
             confidence=float(row.get("confidence", 0.0) or 0.0),
             reason=str(row.get("reason", "")),
+            finger_sample_count=int(row.get("finger_sample_count", 0) or 0),
+            desk_sample_count=int(row.get("desk_sample_count", 0) or 0),
+            sample_radius_px=int(row.get("sample_radius_px", 0) or 0),
+            desk_depth_source=str(row.get("desk_depth_source", "")),
         )
     return observations
 

@@ -59,6 +59,8 @@ class FingerState:
     depth_release_ready_frames: int = 0
     depth_peak_height_m: Optional[float] = None
     max_down_depth_velocity_m_s: float = 0.0
+    depth_valid_frames: int = 0
+    depth_missing_frames: int = 0
     last_zone_id: Optional[str] = None
     recent_motion: Deque[Tuple[float, int, float]] = field(default_factory=lambda: deque(maxlen=8))
     trail: Deque[Tuple[int, int]] = field(default_factory=lambda: deque(maxlen=config.TRAIL_LENGTH))
@@ -137,8 +139,15 @@ class HitDetector:
                             "depth_contact": depth_observation.contact if depth_observation else None,
                             "depth_height_m": depth_observation.height_above_desk_m if depth_observation else None,
                             "depth_down_velocity_m_s": state.smoothed_depth_down_velocity_m_s,
+                            "depth_raw_down_velocity_m_s": state.raw_depth_down_velocity_m_s,
                             "depth_motion_state": state.depth_motion_state,
                             "depth_reason": depth_observation.reason if depth_observation else None,
+                            "depth_valid_frames": state.depth_valid_frames,
+                            "depth_missing_frames": state.depth_missing_frames,
+                            "depth_finger_samples": getattr(depth_observation, "finger_sample_count", None) if depth_observation else None,
+                            "depth_desk_samples": getattr(depth_observation, "desk_sample_count", None) if depth_observation else None,
+                            "depth_sample_radius_px": getattr(depth_observation, "sample_radius_px", None) if depth_observation else None,
+                            "depth_desk_source": getattr(depth_observation, "desk_depth_source", None) if depth_observation else None,
                             "tracking_source": getattr(hand, "tracking_source", "mediapipe"),
                             "missed_frames": getattr(hand, "missed_frames", 0),
                             "unstable_tracking": True,
@@ -180,8 +189,15 @@ class HitDetector:
                     "depth_contact": depth_observation.contact if depth_observation else None,
                     "depth_height_m": depth_observation.height_above_desk_m if depth_observation else None,
                     "depth_down_velocity_m_s": state.smoothed_depth_down_velocity_m_s,
+                    "depth_raw_down_velocity_m_s": state.raw_depth_down_velocity_m_s,
                     "depth_motion_state": state.depth_motion_state,
                     "depth_reason": depth_observation.reason if depth_observation else None,
+                    "depth_valid_frames": state.depth_valid_frames,
+                    "depth_missing_frames": state.depth_missing_frames,
+                    "depth_finger_samples": getattr(depth_observation, "finger_sample_count", None) if depth_observation else None,
+                    "depth_desk_samples": getattr(depth_observation, "desk_sample_count", None) if depth_observation else None,
+                    "depth_sample_radius_px": getattr(depth_observation, "sample_radius_px", None) if depth_observation else None,
+                    "depth_desk_source": getattr(depth_observation, "desk_depth_source", None) if depth_observation else None,
                     "tracking_source": getattr(hand, "tracking_source", "mediapipe"),
                     "missed_frames": getattr(hand, "missed_frames", 0),
                     "unstable_tracking": False,
@@ -704,8 +720,19 @@ class HitDetector:
     ) -> Optional[str]:
         height = self._depth_height(observation)
         if height is None:
+            state.depth_missing_frames += 1
+            if state.depth_missing_frames > max(2, config.PIANO_RELEASE_STABLE_FRAMES) and not state.is_pressed:
+                state.depth_motion_state = "idle"
+                state.depth_armed_zone_id = None
+                state.depth_falling_frames = 0
+                state.depth_release_ready_frames = 0
+                state.depth_peak_height_m = None
+                state.max_down_depth_velocity_m_s = 0.0
+                state.depth_valid_frames = 0
             return None
 
+        state.depth_missing_frames = 0
+        state.depth_valid_frames += 1
         depth_velocity = self._update_depth_velocity(state, height, current_time)
         (
             arm_height,
@@ -715,51 +742,75 @@ class HitDetector:
             falling_velocity,
             strike_velocity,
         ) = self._piano_depth_thresholds()
-        if state.depth_motion_state in {"raised", "falling"} and zone.sound_id != state.depth_armed_zone_id:
+
+        if state.depth_motion_state in {"armed", "raised", "falling"}:
             state.depth_armed_zone_id = zone.sound_id
 
         if height >= arm_height and state.depth_motion_state != "falling":
-            state.depth_motion_state = "raised"
+            state.depth_motion_state = "armed"
             state.depth_armed_zone_id = zone.sound_id
             state.depth_falling_frames = 0
+            state.depth_release_ready_frames = 0
             state.depth_peak_height_m = max(state.depth_peak_height_m or height, height)
             state.max_down_depth_velocity_m_s = 0.0
             return "depth_armed"
 
-        if state.depth_motion_state == "falling" and height >= release_height:
-            state.depth_motion_state = "raised"
+        if state.depth_motion_state not in {"armed", "raised", "falling"}:
+            state.depth_peak_height_m = height
+            state.max_down_depth_velocity_m_s = 0.0
+            if height <= press_height:
+                state.depth_motion_state = "resting"
+                state.depth_armed_zone_id = zone.sound_id
+                return "depth_resting"
+            return "depth_lift_too_low"
+
+        peak = max(state.depth_peak_height_m if state.depth_peak_height_m is not None else height, height)
+        state.depth_peak_height_m = peak
+        drop = peak - height
+
+        if state.depth_motion_state == "falling" and height >= release_height and depth_velocity <= 0.0:
+            state.depth_motion_state = "armed"
             state.depth_armed_zone_id = zone.sound_id
             state.depth_falling_frames = 0
             state.depth_peak_height_m = height
             state.max_down_depth_velocity_m_s = 0.0
             return "depth_lifted"
 
-        can_start_fall = state.depth_motion_state in {"raised", "falling"}
-        if can_start_fall and depth_velocity >= falling_velocity:
+        can_start_fall = state.depth_motion_state in {"armed", "raised", "falling"}
+        falling_by_velocity = depth_velocity >= falling_velocity
+        falling_by_drop = drop >= min_drop * 0.5
+        falling_by_landing = height <= press_height and drop > 0.0
+        if can_start_fall and (falling_by_velocity or falling_by_drop or falling_by_landing):
             if state.depth_motion_state != "falling":
                 state.depth_falling_frames = 1
-                state.depth_peak_height_m = max(state.depth_peak_height_m or height, height)
             else:
                 state.depth_falling_frames += 1
             state.depth_motion_state = "falling"
-            state.depth_armed_zone_id = state.depth_armed_zone_id or zone.sound_id
+            state.depth_armed_zone_id = zone.sound_id
             state.max_down_depth_velocity_m_s = max(state.max_down_depth_velocity_m_s, depth_velocity)
         elif state.depth_motion_state == "falling":
             state.depth_falling_frames += 1
             state.max_down_depth_velocity_m_s = max(state.max_down_depth_velocity_m_s, depth_velocity)
 
         if state.depth_motion_state != "falling":
-            return "depth_not_armed"
+            return "depth_armed"
         if state.depth_falling_frames < config.PIANO_MIN_FALL_FRAMES:
             return "depth_falling"
+        if self._piano_trigger_mode() == "3d" and state.depth_valid_frames < 3:
+            return "depth_warming"
         if height > press_height:
             return "depth_air"
 
-        peak = state.depth_peak_height_m if state.depth_peak_height_m is not None else height
         drop = peak - height
         if drop < min_drop:
+            state.depth_motion_state = "resting"
+            state.depth_armed_zone_id = zone.sound_id
+            state.depth_falling_frames = 0
+            state.depth_peak_height_m = height
+            state.max_down_depth_velocity_m_s = 0.0
             return "depth_short_drop"
-        if state.max_down_depth_velocity_m_s < strike_velocity:
+        strong_drop = drop >= min_drop * 1.35
+        if state.max_down_depth_velocity_m_s < strike_velocity and not strong_drop:
             return "depth_velocity"
         return "hit"
 
@@ -894,10 +945,11 @@ class HitDetector:
             state.falling_frames = 0
             state.peak_y = None
             state.peak_relative_y = None
-            state.depth_motion_state = "raised"
+            state.depth_motion_state = "armed"
             state.depth_armed_zone_id = zone.sound_id
             state.depth_falling_frames = 0
             state.depth_peak_height_m = height
+            state.depth_missing_frames = 0
             state.max_down_velocity = 0.0
             state.max_down_relative_velocity = 0.0
             state.max_down_depth_velocity_m_s = 0.0

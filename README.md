@@ -330,6 +330,8 @@ python replay_session.py data/sessions/test01 --depth-contact-mode required --ou
 
 回放会生成 `replay_hits.csv`、`replay_miss_reasons.csv` 和 `replay_summary.json`。
 
+Record3D 钢琴录制会在每帧的 `depth_observations` 里保存可回放的轻量 3D 观测：指尖深度、局部桌面深度、桌面来源、采样半径、有效样本数、相对桌面的高度和 contact 状态。它不保存完整 depth 视频，所以文件仍然比较小，但足够离线重放 3D hit detector。
+
 追踪质量基准报告：
 
 ```bash
@@ -366,6 +368,14 @@ python tools/reprocess_session_tracking.py data/sessions/record3d_refine_off --o
 ```bash
 python tools/run_benchmark_suite.py data/sessions/record3d_refine_off data/sessions/record3d_refine_on --skip-uncalibrated-depth
 ```
+
+3D 钢琴触发的专用 benchmark：
+
+```bash
+python tools/run_3d_benchmark.py
+```
+
+默认会扫描 `data/sessions/benchmarks_3d/*`，用 `PIANO_TRIGGER_MODE=3d` 回放，并把输出写到 `data/benchmarks/3d_trigger/`。如果某个 session 里有 `annotations.csv`，它会按 `80ms` 容差和音符匹配计算 precision、recall、F1；如果还没有人工标注，会标记为 `needs_annotations`，只输出预测 hits 和 miss reasons，避免把未标注视频误当成通过。
 
 默认量化目标是：
 
