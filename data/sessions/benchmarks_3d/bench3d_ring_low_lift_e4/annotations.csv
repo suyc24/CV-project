@@ -1,0 +1,9 @@
+onset,note,frame_index,source,score_index,video,fps
+10.669253,E4,110,direct,,data\sessions\benchmarks_3d\bench3d_ring_low_lift_e4\raw_video.avi,10.310000
+12.221145,E4,126,direct,,data\sessions\benchmarks_3d\bench3d_ring_low_lift_e4\raw_video.avi,10.310000
+14.064016,E4,145,direct,,data\sessions\benchmarks_3d\bench3d_ring_low_lift_e4\raw_video.avi,10.310000
+15.809893,E4,163,direct,,data\sessions\benchmarks_3d\bench3d_ring_low_lift_e4\raw_video.avi,10.310000
+17.555771,E4,181,direct,,data\sessions\benchmarks_3d\bench3d_ring_low_lift_e4\raw_video.avi,10.310000
+19.107662,E4,197,direct,,data\sessions\benchmarks_3d\bench3d_ring_low_lift_e4\raw_video.avi,10.310000
+20.562561,E4,212,direct,,data\sessions\benchmarks_3d\bench3d_ring_low_lift_e4\raw_video.avi,10.310000
+22.696411,E4,234,direct,,data\sessions\benchmarks_3d\bench3d_ring_low_lift_e4\raw_video.avi,10.310000

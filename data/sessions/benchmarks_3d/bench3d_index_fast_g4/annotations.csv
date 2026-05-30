@@ -1,0 +1,13 @@
+onset,note,frame_index,source,score_index,video,fps
+5.691769,G4,65,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+6.217163,G4,71,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+6.830123,G4,78,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+7.443082,G4,85,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+8.406305,G4,96,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+9.106830,G4,104,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+9.894921,G4,113,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+10.507881,G4,120,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+11.208406,G4,128,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+11.821366,G4,135,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+12.521891,G4,143,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000
+13.309982,G4,152,direct,,data\sessions\benchmarks_3d\bench3d_index_fast_g4\raw_video.avi,11.420000

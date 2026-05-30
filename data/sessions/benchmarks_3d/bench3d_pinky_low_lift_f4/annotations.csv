@@ -1,0 +1,9 @@
+onset,note,frame_index,source,score_index,video,fps
+10.288698,F4,134,direct,,data\sessions\benchmarks_3d\bench3d_pinky_low_lift_f4\raw_video.avi,13.024000
+11.210074,F4,146,direct,,data\sessions\benchmarks_3d\bench3d_pinky_low_lift_f4\raw_video.avi,13.024000
+12.438575,F4,162,direct,,data\sessions\benchmarks_3d\bench3d_pinky_low_lift_f4\raw_video.avi,13.024000
+13.820639,F4,180,direct,,data\sessions\benchmarks_3d\bench3d_pinky_low_lift_f4\raw_video.avi,13.024000
+15.202703,F4,198,direct,,data\sessions\benchmarks_3d\bench3d_pinky_low_lift_f4\raw_video.avi,13.024000
+16.507985,F4,215,direct,,data\sessions\benchmarks_3d\bench3d_pinky_low_lift_f4\raw_video.avi,13.024000
+17.736486,F4,231,direct,,data\sessions\benchmarks_3d\bench3d_pinky_low_lift_f4\raw_video.avi,13.024000
+19.272113,F4,251,direct,,data\sessions\benchmarks_3d\bench3d_pinky_low_lift_f4\raw_video.avi,13.024000
