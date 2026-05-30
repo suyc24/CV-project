@@ -136,29 +136,34 @@ def test_clear_lift_allows_retrigger():
 
 
 def test_active_finger_blocks_other_same_hand_piano_hit():
+    previous = config.PIANO_MONOPHONIC_PER_HAND
+    config.PIANO_MONOPHONIC_PER_HAND = True
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
-    detector = HitDetector()
-    left_zone = zones[0]
-    right_zone = zones[1]
-    y_start = left_zone.y1 + 5
-    y_hit = int(left_zone.y1 + left_zone.height * 0.78)
+    try:
+        detector = HitDetector()
+        left_zone = zones[0]
+        right_zone = zones[1]
+        y_start = left_zone.y1 + 5
+        y_hit = int(left_zone.y1 + left_zone.height * 0.78)
 
-    detector.update([hand_with_finger(0, 8, left_zone.center[0], y_start)], zones, 100.0)
-    hits = detector.update([hand_with_finger(0, 8, left_zone.center[0], y_hit)], zones, 100.05)
-    assert len(hits) == 1
+        detector.update([hand_with_finger(0, 8, left_zone.center[0], y_start)], zones, 100.0)
+        hits = detector.update([hand_with_finger(0, 8, left_zone.center[0], y_hit)], zones, 100.05)
+        assert len(hits) == 1
 
-    detector.update(
-        [hand_with_fingers(0, {8: (left_zone.center[0], y_hit), 12: (right_zone.center[0], y_start)})],
-        zones,
-        100.20,
-    )
-    hits = detector.update(
-        [hand_with_fingers(0, {8: (left_zone.center[0], y_hit), 12: (right_zone.center[0], y_hit)})],
-        zones,
-        100.25,
-    )
-    assert not hits
-    assert "suppressed_by_active_finger" in [diag["reason"] for diag in detector.diagnostics()]
+        detector.update(
+            [hand_with_fingers(0, {8: (left_zone.center[0], y_hit), 12: (right_zone.center[0], y_start)})],
+            zones,
+            100.20,
+        )
+        hits = detector.update(
+            [hand_with_fingers(0, {8: (left_zone.center[0], y_hit), 12: (right_zone.center[0], y_hit)})],
+            zones,
+            100.25,
+        )
+        assert not hits
+        assert "suppressed_by_active_finger" in [diag["reason"] for diag in detector.diagnostics()]
+    finally:
+        config.PIANO_MONOPHONIC_PER_HAND = previous
 
 
 def test_depth_contact_prevents_false_release_retrigger():
