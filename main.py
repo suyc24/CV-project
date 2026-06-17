@@ -102,6 +102,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-tracking-roi", action="store_true", help="Run hand tracking on the whole frame")
     parser.add_argument("--tracking-roi-y", type=float, default=config.TRACKING_ROI_Y_MIN, help="Top y ratio for hand-tracking ROI")
     parser.add_argument("--tracking-max-width", type=int, default=config.TRACKING_MAX_WIDTH, help="Max width passed to MediaPipe")
+    parser.add_argument(
+        "--hand-model-complexity",
+        type=int,
+        choices=[0, 1],
+        default=config.HAND_MODEL_COMPLEXITY,
+        help="MediaPipe legacy Hands model complexity. 0 is faster; 1 is heavier.",
+    )
     parser.add_argument("--no-landmark-smoothing", action="store_true", help="Disable landmark temporal smoothing")
     parser.add_argument("--landmark-smoothing-alpha", type=float, default=config.LANDMARK_SMOOTHING_ALPHA, help="Landmark smoothing alpha")
     parser.add_argument("--no-optical-stabilization", action="store_true", help="Disable optical-flow fingertip stabilization")
@@ -294,6 +301,7 @@ def main() -> int:
             min_detection_confidence=args.min_detection_confidence,
             min_tracking_confidence=args.min_tracking_confidence,
             input_max_width=args.tracking_max_width,
+            model_complexity=args.hand_model_complexity,
             smooth_landmarks=not args.no_landmark_smoothing,
             smoothing_alpha=args.landmark_smoothing_alpha,
             refine_fingertips=args.fingertip_refinement,

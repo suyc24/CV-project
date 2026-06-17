@@ -43,6 +43,7 @@ class HandTracker:
         min_detection_confidence: float = 0.55,
         min_tracking_confidence: float = 0.55,
         input_max_width: int = config.TRACKING_MAX_WIDTH,
+        model_complexity: int = config.HAND_MODEL_COMPLEXITY,
         smooth_landmarks: bool = True,
         smoothing_alpha: float = config.LANDMARK_SMOOTHING_ALPHA,
         refine_fingertips: bool = config.FINGERTIP_REFINEMENT_ENABLED,
@@ -55,6 +56,7 @@ class HandTracker:
         self._last_timestamp_ms = 0
         self._frame_index = 0
         self._input_max_width = input_max_width
+        self._model_complexity = max(0, min(1, int(model_complexity)))
         self._smooth_landmarks = smooth_landmarks
         self._smoothing_alpha = smoothing_alpha
         self._smoothed_points: Dict[Tuple[int, int], Tuple[float, float, float]] = {}
@@ -86,6 +88,7 @@ class HandTracker:
                 max_num_hands=max_num_hands,
                 min_detection_confidence=min_detection_confidence,
                 min_tracking_confidence=min_tracking_confidence,
+                model_complexity=self._model_complexity,
             )
             return
         except Exception:
@@ -111,13 +114,14 @@ class HandTracker:
         max_num_hands: int,
         min_detection_confidence: float,
         min_tracking_confidence: float,
+        model_complexity: int,
     ) -> None:
         self._mp_hands = self._load_legacy_hands_module()
         try:
             self._hands = self._mp_hands.Hands(
                 static_image_mode=False,
                 max_num_hands=max_num_hands,
-                model_complexity=1,
+                model_complexity=model_complexity,
                 min_detection_confidence=min_detection_confidence,
                 min_tracking_confidence=min_tracking_confidence,
             )
@@ -174,7 +178,7 @@ class HandTracker:
     def process(self, frame_bgr, roi: Optional[Tuple[int, int, int, int]] = None) -> List[HandLandmarks]:
         self._frame_index += 1
         hands = self._detect(frame_bgr, roi)
-        if not hands and roi is not None and config.TRACKING_FULL_FRAME_REACQUIRE:
+        if not hands and roi is not None and self._should_full_frame_reacquire():
             hands = self._detect(frame_bgr, None)
         elif roi is not None and 0 < len(hands) < self._max_num_hands and self._should_partial_full_frame_reacquire():
             full_frame_hands = self._detect(frame_bgr, None)
@@ -219,6 +223,14 @@ class HandTracker:
         if not config.TRACKING_PARTIAL_FULL_FRAME_REACQUIRE:
             return False
         interval = max(1, int(config.TRACKING_PARTIAL_REACQUIRE_INTERVAL_FRAMES))
+        return self._frame_index % interval == 0
+
+    def _should_full_frame_reacquire(self) -> bool:
+        if not config.TRACKING_FULL_FRAME_REACQUIRE:
+            return False
+        interval = max(1, int(config.TRACKING_FULL_REACQUIRE_INTERVAL_FRAMES))
+        if self._empty_detection_frames <= 0:
+            return True
         return self._frame_index % interval == 0
 
     def _refine_fingertips(self, frame_bgr, hands: List[HandLandmarks]) -> List[HandLandmarks]:

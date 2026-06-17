@@ -24,6 +24,7 @@ def make_hand(hand_id: int = 0, x: int = 100, y: int = 120, label: str = "Right"
 class FakeTracker(HandTracker):
     def __init__(self, detections):
         self.detections = list(detections)
+        self.detect_calls = []
         self._max_num_hands = 2
         self._frame_index = 0
         self._smoothed_points = {}
@@ -39,6 +40,7 @@ class FakeTracker(HandTracker):
         self._fingertip_refiner = None
 
     def _detect(self, frame_bgr, roi=None):
+        self.detect_calls.append(roi)
         return self.detections.pop(0) if self.detections else []
 
     def _bridge_missing_hands(self, frame_bgr):
@@ -165,6 +167,25 @@ def test_short_detection_gap_keeps_stable_id():
     assert reacquired[0].hand_id == first[0].hand_id
 
 
+def test_empty_roi_full_frame_reacquire_is_throttled():
+    previous_interval = config.TRACKING_FULL_REACQUIRE_INTERVAL_FRAMES
+    config.TRACKING_FULL_REACQUIRE_INTERVAL_FRAMES = 6
+    try:
+        tracker = FakeTracker([[], [], [], [], [], []])
+        frame = np.zeros((80, 80, 3), dtype=np.uint8)
+        roi = (0, 20, 80, 80)
+
+        for _ in range(3):
+            assert tracker.process(frame, roi=roi) == []
+
+        full_frame_calls = [call for call in tracker.detect_calls if call is None]
+        roi_calls = [call for call in tracker.detect_calls if call == roi]
+        assert len(roi_calls) == 3
+        assert len(full_frame_calls) == 1
+    finally:
+        config.TRACKING_FULL_REACQUIRE_INTERVAL_FRAMES = previous_interval
+
+
 if __name__ == "__main__":
     test_new_hand_is_marked_unstable_for_guard_frames()
     test_full_miss_reacquire_gets_longer_guard()
@@ -173,4 +194,5 @@ if __name__ == "__main__":
     test_extra_detection_does_not_steal_existing_hand_id()
     test_overlapping_extra_detection_is_dropped()
     test_short_detection_gap_keeps_stable_id()
+    test_empty_roi_full_frame_reacquire_is_throttled()
     print("hand tracker guard tests passed")
