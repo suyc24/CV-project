@@ -16,7 +16,7 @@ import config
 from camera_utils import tracking_roi
 from hand_tracker import HandLandmarks, HandTracker
 from hit_detector import HitDetector, HitEvent
-from instrument import Zone
+from instrument import InstrumentLayout, Zone
 from replay_session import _depth_observations_from_dict, _zone_from_dict
 
 
@@ -49,6 +49,13 @@ def parse_args() -> argparse.Namespace:
             "reprocessed stable hand ids can differ from the original run."
         ),
     )
+    parser.add_argument(
+        "--rebuild-zones",
+        action="store_true",
+        help="Rebuild instrument zones from current layout/config instead of replaying recorded zones",
+    )
+    parser.add_argument("--piano-left-trim-keys", type=float, default=config.PIANO_LEFT_TRIM_KEYS)
+    parser.add_argument("--piano-right-trim-keys", type=float, default=config.PIANO_RIGHT_TRIM_KEYS)
     parser.add_argument("--limit-frames", type=int, default=0, help="Optional smoke-test frame limit")
     return parser.parse_args()
 
@@ -57,6 +64,8 @@ def main() -> int:
     args = parse_args()
     if args.no_optical_stabilization:
         config.FINGERTIP_OPTICAL_FLOW_STABILIZATION = False
+    config.PIANO_LEFT_TRIM_KEYS = max(0.0, float(args.piano_left_trim_keys))
+    config.PIANO_RIGHT_TRIM_KEYS = max(0.0, float(args.piano_right_trim_keys))
 
     session_dir = Path(args.session_dir)
     source_frames_path = session_dir / "frames.jsonl"
@@ -67,6 +76,11 @@ def main() -> int:
         raise SystemExit(f"Missing {video_path}; record sessions with video enabled for tracker benchmarks")
 
     source_frames = load_jsonl(source_frames_path)
+    source_metadata = load_metadata(session_dir / "metadata.json")
+    layout = InstrumentLayout(
+        str(source_metadata.get("mode", "piano")),
+        roi_ratios=parse_roi(source_metadata.get("instrument_roi")),
+    )
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     metadata = {
@@ -121,11 +135,14 @@ def main() -> int:
 
                 roi = None if args.no_tracking_roi else tracking_roi(frame.shape, args.tracking_roi_y)
                 hands = tracker.process(frame, roi=roi)
-                zones = transform_zones(
-                    [_zone_from_dict(zone) for zone in source_entry.get("zones", [])],
-                    source_shape=source_shape,
-                    target_shape=tuple(frame.shape),
-                )
+                if args.rebuild_zones:
+                    zones = layout.get_zones(tuple(frame.shape))
+                else:
+                    zones = transform_zones(
+                        [_zone_from_dict(zone) for zone in source_entry.get("zones", [])],
+                        source_shape=source_shape,
+                        target_shape=tuple(frame.shape),
+                    )
                 depth_observations = (
                     _depth_observations_from_dict(source_entry.get("depth_observations", []))
                     if args.use_recorded_depth
@@ -196,6 +213,25 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             if line.strip():
                 rows.append(json.loads(line))
     return rows
+
+
+def load_metadata(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def parse_roi(value: object) -> Optional[tuple[float, float, float, float]]:
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        return tuple(float(item) for item in value)  # type: ignore[return-value]
+    except (TypeError, ValueError):
+        return None
 
 
 def transform_zones(zones: Iterable[Zone], source_shape: tuple[int, ...], target_shape: tuple[int, ...]) -> list[Zone]:

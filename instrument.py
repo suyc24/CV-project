@@ -152,8 +152,7 @@ class InstrumentLayout:
         bottom_right = (x2, y2)
         zones: List[Zone] = []
         for idx, label in enumerate(self.PIANO_LABELS):
-            t0 = idx / key_count
-            t1 = (idx + 1) / key_count
+            t0, t1 = self._piano_key_span(idx, key_count)
             poly = (
                 _lerp_point(top_left, top_right, t0),
                 _lerp_point(top_left, top_right, t1),
@@ -186,8 +185,7 @@ class InstrumentLayout:
         key_count = len(self.PIANO_LABELS)
         zones: List[Zone] = []
         for idx, label in enumerate(self.PIANO_LABELS):
-            t0 = idx / key_count
-            t1 = (idx + 1) / key_count
+            t0, t1 = self._piano_key_span(idx, key_count)
             poly = (
                 _lerp_point(top_left, top_right, t0),
                 _lerp_point(top_left, top_right, t1),
@@ -211,6 +209,14 @@ class InstrumentLayout:
                 )
             )
         return zones
+
+    def _piano_key_span(self, idx: int, key_count: int) -> Tuple[float, float]:
+        left_trim = max(0.0, float(config.PIANO_LEFT_TRIM_KEYS))
+        right_trim = max(0.0, float(config.PIANO_RIGHT_TRIM_KEYS))
+        total_keys = max(1.0, key_count + left_trim + right_trim)
+        t0 = (idx + left_trim) / total_keys
+        t1 = (idx + left_trim + 1.0) / total_keys
+        return (t0, t1)
 
 
 def _lerp_point(a: Tuple[int, int], b: Tuple[int, int], t: float) -> Tuple[int, int]:

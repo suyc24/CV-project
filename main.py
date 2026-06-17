@@ -119,9 +119,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-tracking-confidence", type=float, default=config.HAND_MIN_TRACKING_CONFIDENCE, help="MediaPipe hand tracking confidence")
     parser.add_argument(
         "--piano-sensitivity",
-        choices=["stable", "balanced", "sensitive"],
+        choices=["strict", "stable", "balanced", "sensitive"],
         default="stable",
-        help="Piano hit tuning preset. stable reduces jitter triggers; sensitive accepts softer taps.",
+        help="Piano hit tuning preset. strict is most conservative; sensitive accepts softer taps.",
+    )
+    parser.add_argument(
+        "--piano-left-trim-keys",
+        type=float,
+        default=config.PIANO_LEFT_TRIM_KEYS,
+        help="Ignore this many white-key widths at the left of the piano ROI before labeling C4",
+    )
+    parser.add_argument(
+        "--piano-right-trim-keys",
+        type=float,
+        default=config.PIANO_RIGHT_TRIM_KEYS,
+        help="Ignore this many white-key widths at the right of the piano ROI",
     )
     parser.add_argument(
         "--calibration-exposures",
@@ -671,19 +683,39 @@ def apply_quality_preset(settings: CameraSettings, preset: str) -> None:
 def apply_runtime_tracking_config(args: argparse.Namespace) -> None:
     if args.no_optical_stabilization:
         config.FINGERTIP_OPTICAL_FLOW_STABILIZATION = False
+    config.PIANO_LEFT_TRIM_KEYS = max(0.0, float(args.piano_left_trim_keys))
+    config.PIANO_RIGHT_TRIM_KEYS = max(0.0, float(args.piano_right_trim_keys))
 
-    if args.piano_sensitivity == "sensitive":
-        config.PIANO_STRIKE_MIN_DROP_PX = 14.0
-        config.PIANO_STRIKE_MIN_VELOCITY = 90.0
-        config.PIANO_STRIKE_MIN_NET_DROP_PX = 10.0
+    if args.piano_sensitivity == "strict":
+        config.PIANO_STRIKE_MIN_DROP_PX = 12.0
+        config.PIANO_STRIKE_MIN_VELOCITY = 130.0
+        config.PIANO_STRIKE_MIN_NET_DROP_PX = 8.0
+        config.PIANO_RELEASE_LIFT_PX = 24.0
+        config.PIANO_RELEASE_MIN_NET_LIFT_PX = 28.0
+        config.PIANO_RELEASE_STABLE_FRAMES = 3
         config.PIANO_RELEASE_MIN_UP_VELOCITY = 10.0
         config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER = 1.25
+        config.PIANO_HAND_HIT_COOLDOWN = 0.14
+    elif args.piano_sensitivity == "sensitive":
+        config.PIANO_STRIKE_MIN_DROP_PX = 5.0
+        config.PIANO_STRIKE_MIN_VELOCITY = 75.0
+        config.PIANO_STRIKE_MIN_NET_DROP_PX = 3.0
+        config.PIANO_RELEASE_LIFT_PX = 12.0
+        config.PIANO_RELEASE_MIN_NET_LIFT_PX = 14.0
+        config.PIANO_RELEASE_STABLE_FRAMES = 1
+        config.PIANO_RELEASE_MIN_UP_VELOCITY = 10.0
+        config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER = 1.25
+        config.PIANO_HAND_HIT_COOLDOWN = 0.06
     elif args.piano_sensitivity == "balanced":
-        config.PIANO_STRIKE_MIN_DROP_PX = 16.0
+        config.PIANO_STRIKE_MIN_DROP_PX = 8.0
         config.PIANO_STRIKE_MIN_VELOCITY = 100.0
-        config.PIANO_STRIKE_MIN_NET_DROP_PX = 12.0
+        config.PIANO_STRIKE_MIN_NET_DROP_PX = 5.0
+        config.PIANO_RELEASE_LIFT_PX = 18.0
+        config.PIANO_RELEASE_MIN_NET_LIFT_PX = 20.0
+        config.PIANO_RELEASE_STABLE_FRAMES = 2
         config.PIANO_RELEASE_MIN_UP_VELOCITY = 14.0
         config.PIANO_RELEASE_STRONG_LIFT_MULTIPLIER = 1.4
+        config.PIANO_HAND_HIT_COOLDOWN = 0.10
 
     if args.paper_keyboard and args.depth_contact_mode == "auto":
         config.DEPTH_CONTACT_MODE = "off"

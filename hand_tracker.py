@@ -186,6 +186,10 @@ class HandTracker:
             if bridged:
                 return bridged
             self._empty_detection_frames += 1
+            if self._empty_detection_frames <= int(config.TRACKING_MISSING_HAND_MEMORY_FRAMES):
+                self._last_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                self._flow_points.clear()
+                return []
             self._clear_after_miss(frame_bgr)
             return []
 

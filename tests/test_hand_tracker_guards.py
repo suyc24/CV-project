@@ -148,6 +148,23 @@ def test_overlapping_extra_detection_is_dropped():
     assert second[0].hand_id == first[0].hand_id
 
 
+def test_short_detection_gap_keeps_stable_id():
+    tracker = FakeTracker(
+        [
+            [make_hand(x=100, y=120, label="Left")],
+            [],
+            [make_hand(x=112, y=128, label="Left")],
+        ]
+    )
+    frame = np.zeros((80, 80, 3), dtype=np.uint8)
+
+    first = tracker.process(frame)
+    assert tracker.process(frame) == []
+    reacquired = tracker.process(frame)
+
+    assert reacquired[0].hand_id == first[0].hand_id
+
+
 if __name__ == "__main__":
     test_new_hand_is_marked_unstable_for_guard_frames()
     test_full_miss_reacquire_gets_longer_guard()
@@ -155,4 +172,5 @@ if __name__ == "__main__":
     test_single_hand_label_flip_keeps_stable_id()
     test_extra_detection_does_not_steal_existing_hand_id()
     test_overlapping_extra_detection_is_dropped()
+    test_short_detection_gap_keeps_stable_id()
     print("hand tracker guard tests passed")

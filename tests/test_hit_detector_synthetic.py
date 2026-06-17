@@ -106,6 +106,23 @@ def test_pressed_finger_jitter_does_not_retrigger():
         assert not hits, f"stationary jitter retriggered at y={y}"
 
 
+def test_stable_detector_hand_id_survives_raw_id_jump():
+    zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+    zone = zones[0]
+    detector = HitDetector()
+    x = zone.center[0]
+    y_start = zone.y1 + 5
+    y_hit = int(zone.y1 + zone.height * 0.78)
+
+    detector.update([hand_with_finger(0, 8, x, y_start)], zones, 100.0)
+    hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.05)
+    assert len(hits) == 1
+
+    for idx, y in enumerate((y_hit - 8, y_hit + 5, y_hit - 6, y_hit + 4), start=1):
+        hits = detector.update([hand_with_finger(37, 8, x + 2, y)], zones, 100.05 + idx * 0.05)
+        assert not hits
+
+
 def test_short_lift_before_drop_does_not_trigger():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     zone = zones[0]
@@ -133,6 +150,30 @@ def test_clear_lift_allows_retrigger():
     detector.update([hand_with_finger(0, 8, x, y_lifted)], zones, 100.30)
     hits = detector.update([hand_with_finger(0, 8, x, y_hit)], zones, 100.38)
     assert len(hits) == 1
+
+
+def test_piano_zone_change_releases_pressed_finger():
+    previous = config.PIANO_RELEASE_ON_ZONE_CHANGE
+    config.PIANO_RELEASE_ON_ZONE_CHANGE = True
+    try:
+        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+        left_zone = zones[0]
+        right_zone = zones[1]
+        detector = HitDetector()
+        y_start = left_zone.y1 + 5
+        y_hit = int(left_zone.y1 + left_zone.height * 0.78)
+        y_lifted = y_hit - 16
+
+        detector.update([hand_with_finger(0, 8, left_zone.center[0], y_start)], zones, 100.0)
+        hits = detector.update([hand_with_finger(0, 8, left_zone.center[0], y_hit)], zones, 100.05)
+        assert len(hits) == 1
+
+        detector.update([hand_with_finger(0, 8, right_zone.center[0], y_lifted)], zones, 100.25)
+        hits = detector.update([hand_with_finger(0, 8, right_zone.center[0], y_hit)], zones, 100.35)
+        assert len(hits) == 1
+        assert hits[0].note_id == right_zone.label
+    finally:
+        config.PIANO_RELEASE_ON_ZONE_CHANGE = previous
 
 
 def test_active_finger_blocks_other_same_hand_piano_hit():
@@ -212,6 +253,31 @@ def test_depth_contact_blocks_passive_piano_arm():
         config.PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT = previous
 
 
+def test_3d_depth_motion_alone_does_not_trigger_without_2d_drop():
+    previous_direct = config.PIANO_3D_DIRECT_TRIGGER_ENABLED
+    previous_mode = config.DEPTH_CONTACT_MODE
+    config.PIANO_3D_DIRECT_TRIGGER_ENABLED = False
+    config.DEPTH_CONTACT_MODE = "assist"
+    try:
+        zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
+        zone = zones[0]
+        detector = HitDetector()
+        x = zone.center[0]
+        y = int(zone.y1 + zone.height * 0.50)
+        hand = hand_with_finger(0, 8, x, y)
+        high = SimpleNamespace(contact=False, height_above_desk_m=0.07, reason="air")
+        contact = SimpleNamespace(contact=True, height_above_desk_m=0.0, reason="contact")
+
+        detector.update([hand], zones, 100.0, {(0, 8): high})
+        detector.update([hand], zones, 100.05, {(0, 8): high})
+        hits = detector.update([hand], zones, 100.10, {(0, 8): contact})
+
+        assert not hits
+    finally:
+        config.PIANO_3D_DIRECT_TRIGGER_ENABLED = previous_direct
+        config.DEPTH_CONTACT_MODE = previous_mode
+
+
 def test_piano_zone_mapping_sticks_near_boundary():
     zones = InstrumentLayout("piano").get_zones((720, 1280, 3))
     detector = HitDetector()
@@ -245,17 +311,32 @@ def test_perspective_key_mapping_uses_landing_x():
         assert zone.label == expected_zone.label, f"{point} mapped to {zone.label}, expected {expected_zone.label}"
 
 
+def test_piano_left_trim_moves_c4_rightward():
+    previous = config.PIANO_LEFT_TRIM_KEYS
+    try:
+        config.PIANO_LEFT_TRIM_KEYS = 0.0
+        normal_c4 = InstrumentLayout("piano").get_zones((720, 1280, 3))[0]
+        config.PIANO_LEFT_TRIM_KEYS = 1.0
+        trimmed_c4 = InstrumentLayout("piano").get_zones((720, 1280, 3))[0]
+        assert trimmed_c4.center[0] > normal_c4.center[0]
+    finally:
+        config.PIANO_LEFT_TRIM_KEYS = previous
+
+
 if __name__ == "__main__":
     test_all_fingertips_can_trigger()
     test_short_drop_does_not_trigger()
     test_default_trigger_fingers_include_thumb()
     test_upper_key_landing_can_trigger()
     test_pressed_finger_jitter_does_not_retrigger()
+    test_stable_detector_hand_id_survives_raw_id_jump()
     test_short_lift_before_drop_does_not_trigger()
     test_clear_lift_allows_retrigger()
     test_active_finger_blocks_other_same_hand_piano_hit()
     test_depth_contact_prevents_false_release_retrigger()
     test_depth_contact_blocks_passive_piano_arm()
+    test_3d_depth_motion_alone_does_not_trigger_without_2d_drop()
     test_piano_zone_mapping_sticks_near_boundary()
     test_perspective_key_mapping_uses_landing_x()
+    test_piano_left_trim_moves_c4_rightward()
     print("synthetic hit detector tests passed")
