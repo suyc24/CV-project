@@ -1,0 +1,241 @@
+{
+  "frames": 300,
+  "timeouts": 0,
+  "measured_duration_s": 12.624076100008097,
+  "effective_loop_fps": 23.76411530027196,
+  "mean_input_fps": 22.19097178982342,
+  "mean_callback_fps": 29.594111726561525,
+  "mean_hands": 0.0,
+  "stage_summary": {
+    "depth_contact_ms": {
+      "mean_ms": 0.000645334948785603,
+      "p50_ms": 0.000600004568696022,
+      "p90_ms": 0.000800006091594696,
+      "p99_ms": 0.001100008375942707,
+      "max_ms": 0.002900022082030773
+    },
+    "display_ms": {
+      "mean_ms": 0.0008683331543579698,
+      "p50_ms": 0.000800006091594696,
+      "p90_ms": 0.001200009137392044,
+      "p99_ms": 0.001700012944638729,
+      "max_ms": 0.002400018274784088
+    },
+    "draw_scene_ms": {
+      "mean_ms": 1.0121410008287057,
+      "p50_ms": 0.9837000397965312,
+      "p90_ms": 1.144199981354177,
+      "p99_ms": 1.549100037664175,
+      "max_ms": 1.6719000414013863
+    },
+    "hand_tracking_ms": {
+      "mean_ms": 37.67052900084915,
+      "p50_ms": 36.73529997467995,
+      "p90_ms": 39.13980000652373,
+      "p99_ms": 54.122200002893806,
+      "max_ms": 59.783599979709834
+    },
+    "hit_detector_ms": {
+      "mean_ms": 0.010896665238154432,
+      "p50_ms": 0.010000017937272787,
+      "p90_ms": 0.011899974197149277,
+      "p99_ms": 0.022799998987466097,
+      "max_ms": 0.17099996330216527
+    },
+    "loop_total_ms": {
+      "mean_ms": 41.93066866854982,
+      "p50_ms": 39.80189998401329,
+      "p90_ms": 42.99929999979213,
+      "p99_ms": 86.31490002153441,
+      "max_ms": 123.97680000867695
+    },
+    "record3d_callback_interval_ms": {
+      "mean_ms": 33.79050566679022,
+      "p50_ms": 33.26789999846369,
+      "p90_ms": 39.88450003089383,
+      "p99_ms": 68.04300000658259,
+      "max_ms": 111.33340001106262
+    },
+    "record3d_confidence_convert_ms": {
+      "mean_ms": 0.0006716680945828557,
+      "p50_ms": 0.000600004568696022,
+      "p90_ms": 0.000900006853044033,
+      "p99_ms": 0.001500011421740055,
+      "max_ms": 0.00300002284348011
+    },
+    "record3d_depth_normalize_ms": {
+      "mean_ms": 1.5229073331768934,
+      "p50_ms": 1.4356999890878797,
+      "p90_ms": 1.8539000302553177,
+      "p99_ms": 2.849100041203201,
+      "max_ms": 3.8634000229649246
+    },
+    "record3d_get_confidence_ms": {
+      "mean_ms": 0.006946333839247624,
+      "p50_ms": 0.00589998671784997,
+      "p90_ms": 0.010000017937272787,
+      "p99_ms": 0.02010003663599491,
+      "max_ms": 0.03060000017285347
+    },
+    "record3d_get_depth_ms": {
+      "mean_ms": 0.14109566633123904,
+      "p50_ms": 0.12390001211315393,
+      "p90_ms": 0.1857000170275569,
+      "p99_ms": 0.3408000338822603,
+      "max_ms": 0.6385999731719494
+    },
+    "record3d_get_intrinsics_ms": {
+      "mean_ms": 0.0008250006552164754,
+      "p50_ms": 0.000600004568696022,
+      "p90_ms": 0.000800006091594696,
+      "p99_ms": 0.001300009898841381,
+      "max_ms": 0.06459996802732348
+    },
+    "record3d_get_rgb_ms": {
+      "mean_ms": 0.1137709995964542,
+      "p50_ms": 0.10489998385310173,
+      "p90_ms": 0.15269999857991934,
+      "p99_ms": 0.2367999986745417,
+      "max_ms": 0.46579999616369605
+    },
+    "record3d_orient_ms": {
+      "mean_ms": 0.0024479980735729137,
+      "p50_ms": 0.002100015990436077,
+      "p90_ms": 0.002400018274784088,
+      "p99_ms": 0.0037999707274138927,
+      "max_ms": 0.07979996735230088
+    },
+    "record3d_read_total_ms": {
+      "mean_ms": 3.037491334252991,
+      "p50_ms": 1.815499970689416,
+      "p90_ms": 2.4559000157751143,
+      "p99_ms": 32.99570002127439,
+      "max_ms": 62.933199980761856
+    },
+    "record3d_rgb_convert_ms": {
+      "mean_ms": 0.1141223330826809,
+      "p50_ms": 0.10359997395426035,
+      "p90_ms": 0.1531000016257167,
+      "p99_ms": 0.3244000254198909,
+      "max_ms": 0.458399998024106
+    },
+    "record3d_wait_ms": {
+      "mean_ms": 1.1251530018247042,
+      "p50_ms": 0.005599984433501959,
+      "p90_ms": 0.008800008799880743,
+      "p99_ms": 29.03680002782494,
+      "max_ms": 57.758299983106554
+    },
+    "zones_ms": {
+      "mean_ms": 0.07735466565160702,
+      "p50_ms": 0.07250002818182111,
+      "p90_ms": 0.08640001760795712,
+      "p99_ms": 0.13940001372247934,
+      "max_ms": 0.16820000018924475
+    }
+  },
+  "bottlenecks": [
+    {
+      "stage": "hand_tracking_ms",
+      "mean_ms": 37.67052900084915,
+      "p90_ms": 39.13980000652373,
+      "share_of_loop": 0.8984003879982005
+    },
+    {
+      "stage": "record3d_callback_interval_ms",
+      "mean_ms": 33.79050566679022,
+      "p90_ms": 39.88450003089383,
+      "share_of_loop": 0.80586612948853
+    },
+    {
+      "stage": "record3d_read_total_ms",
+      "mean_ms": 3.037491334252991,
+      "p90_ms": 2.4559000157751143,
+      "share_of_loop": 0.07244080360996645
+    },
+    {
+      "stage": "record3d_depth_normalize_ms",
+      "mean_ms": 1.5229073331768934,
+      "p90_ms": 1.8539000302553177,
+      "share_of_loop": 0.036319652930294266
+    },
+    {
+      "stage": "record3d_wait_ms",
+      "mean_ms": 1.1251530018247042,
+      "p90_ms": 0.008800008799880743,
+      "share_of_loop": 0.02683365273086206
+    },
+    {
+      "stage": "draw_scene_ms",
+      "mean_ms": 1.0121410008287057,
+      "p90_ms": 1.144199981354177,
+      "share_of_loop": 0.024138441693582244
+    },
+    {
+      "stage": "record3d_get_depth_ms",
+      "mean_ms": 0.14109566633123904,
+      "p90_ms": 0.1857000170275569,
+      "share_of_loop": 0.0033649753464835186
+    },
+    {
+      "stage": "record3d_rgb_convert_ms",
+      "mean_ms": 0.1141223330826809,
+      "p90_ms": 0.1531000016257167,
+      "share_of_loop": 0.002721691227602067
+    },
+    {
+      "stage": "record3d_get_rgb_ms",
+      "mean_ms": 0.1137709995964542,
+      "p90_ms": 0.15269999857991934,
+      "share_of_loop": 0.002713312313137242
+    },
+    {
+      "stage": "zones_ms",
+      "mean_ms": 0.07735466565160702,
+      "p90_ms": 0.08640001760795712,
+      "share_of_loop": 0.0018448230879186298
+    }
+  ],
+  "args": {
+    "frames": 300,
+    "warmup_frames": 30,
+    "output": "data/benchmarks/record3d_profile",
+    "record3d_device": 0,
+    "record3d_timeout": 2.0,
+    "record3d_rotate": 0,
+    "record3d_mirror": false,
+    "record3d_depth_unit": "auto",
+    "mode": "piano",
+    "instrument_roi": "0.05,0.45,0.95,0.95",
+    "paper_keyboard": true,
+    "tracking_max_width": 416,
+    "tracking_roi_y": 0.35,
+    "no_tracking_roi": false,
+    "max_hands": 2,
+    "min_detection_confidence": 0.45,
+    "min_tracking_confidence": 0.45,
+    "no_landmark_smoothing": false,
+    "landmark_smoothing_alpha": 0.72,
+    "no_optical_stabilization": false,
+    "fingertip_refinement": false,
+    "piano_left_trim_keys": 0.0,
+    "piano_right_trim_keys": 0.0,
+    "depth_contact_mode": "off",
+    "auto_depth_baseline": false,
+    "depth_baseline_frames": 8,
+    "depth_min_confidence": 0.35,
+    "skip_hand_tracking": false,
+    "skip_depth": false,
+    "skip_hit_detector": false,
+    "draw": true,
+    "display": false,
+    "display_scale": 1.0,
+    "window_width": 0,
+    "window_height": 0,
+    "report_every": 60,
+    "list_devices": false
+  },
+  "diagnosis": [
+    "MediaPipe hand tracking is a major bottleneck; reduce --tracking-max-width or ROI/full-frame reacquire work."
+  ]
+}
