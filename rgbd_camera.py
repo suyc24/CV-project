@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from threading import Event
+from threading import Condition, Event, Thread
 from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
@@ -237,3 +237,122 @@ def normalize_depth_units(depth, depth_unit: str = "auto") -> Optional[np.ndarra
     elif depth_unit == "cm" or (depth_unit == "auto" and 5.0 < median <= 20.0):
         depth_arr = depth_arr / 100.0
     return depth_arr
+
+
+class AsyncRecord3DCamera:
+    """Background latest-frame reader for Record3D.
+
+    The Record3D SDK exposes frame-ready callbacks, but fetching RGB, depth,
+    confidence, and orientation conversion still happens synchronously. This
+    wrapper performs that work on a worker thread and lets the main loop consume
+    only the newest completed frame. If the tracker/UI runs slower than the
+    camera, old frames are dropped instead of building latency.
+    """
+
+    def __init__(
+        self,
+        device_index: int = 0,
+        timeout_seconds: float = 2.0,
+        rotate_degrees: int = 0,
+        mirror: bool = False,
+        depth_unit: str = "auto",
+        consumer_timeout_seconds: Optional[float] = None,
+    ) -> None:
+        self._camera = Record3DCamera(
+            device_index=device_index,
+            timeout_seconds=timeout_seconds,
+            rotate_degrees=rotate_degrees,
+            mirror=mirror,
+            depth_unit=depth_unit,
+        )
+        self._consumer_timeout_seconds = timeout_seconds if consumer_timeout_seconds is None else consumer_timeout_seconds
+        self._condition = Condition()
+        self._closed = False
+        self._latest_frame: Optional[RGBDFrame] = None
+        self._latest_timings: Dict[str, float] = {}
+        self._latest_sequence = 0
+        self._last_delivered_sequence = 0
+        self._last_error_timings: Dict[str, float] = {}
+        self._worker = Thread(target=self._worker_loop, name="record3d-reader", daemon=True)
+        self._worker.start()
+
+    @property
+    def rotate_degrees(self) -> int:
+        return self._camera.rotate_degrees
+
+    def set_rotation(self, rotate_degrees: int) -> None:
+        self._camera.set_rotation(rotate_degrees)
+
+    def rotate_clockwise(self) -> int:
+        return self._camera.rotate_clockwise()
+
+    def read(self) -> tuple[bool, Optional[RGBDFrame]]:
+        ok, frame, _ = self.read_profiled()
+        return ok, frame
+
+    def read_profiled(self) -> Tuple[bool, Optional[RGBDFrame], Dict[str, float]]:
+        wait_start = time.perf_counter()
+        with self._condition:
+            last_seen = self._last_delivered_sequence
+            deadline = wait_start + max(0.0, float(self._consumer_timeout_seconds))
+            while not self._closed and self._latest_sequence <= last_seen:
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0.0:
+                    timings = dict(self._last_error_timings)
+                    timings["async_wait_ms"] = (time.perf_counter() - wait_start) * 1000.0
+                    timings["async_timeout"] = 1.0
+                    timings["async_sequence"] = float(self._latest_sequence)
+                    return False, None, timings
+                self._condition.wait(remaining)
+
+            if self._closed and self._latest_sequence <= last_seen:
+                timings = dict(self._last_error_timings)
+                timings["async_wait_ms"] = (time.perf_counter() - wait_start) * 1000.0
+                timings["async_closed"] = 1.0
+                return False, None, timings
+
+            frame = self._latest_frame
+            timings = dict(self._latest_timings)
+            sequence = self._latest_sequence
+            dropped = max(0, sequence - self._last_delivered_sequence - 1)
+            self._last_delivered_sequence = sequence
+
+        if frame is None:
+            timings["async_wait_ms"] = (time.perf_counter() - wait_start) * 1000.0
+            timings["async_missing_frame"] = 1.0
+            return False, None, timings
+
+        now = time.perf_counter()
+        timings["async_wait_ms"] = (now - wait_start) * 1000.0
+        timings["async_frame_age_ms"] = max(0.0, (now - frame.timestamp) * 1000.0)
+        timings["async_sequence"] = float(sequence)
+        timings["async_dropped_frames"] = float(dropped)
+        timings["async_reused_frame"] = 0.0
+        return True, frame, timings
+
+    def release(self) -> None:
+        with self._condition:
+            self._closed = True
+            self._condition.notify_all()
+        self._camera.release()
+        if self._worker.is_alive():
+            self._worker.join(timeout=1.0)
+
+    def _worker_loop(self) -> None:
+        while True:
+            with self._condition:
+                if self._closed:
+                    return
+            ok, frame, timings = self._camera.read_profiled()
+            with self._condition:
+                if self._closed:
+                    return
+                if ok and frame is not None:
+                    self._latest_sequence += 1
+                    self._latest_frame = frame
+                    self._latest_timings = dict(timings)
+                    self._latest_timings["async_worker_ok"] = 1.0
+                else:
+                    self._last_error_timings = dict(timings)
+                    self._last_error_timings["async_worker_ok"] = 0.0
+                self._condition.notify_all()

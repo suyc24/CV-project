@@ -38,7 +38,7 @@ from hand_tracker import HandTracker
 from hit_detector import HitDetector, HitEvent
 from instrument import InstrumentLayout
 from loop_station import LoopStation
-from rgbd_camera import RGBDFrame, Record3DCamera, list_record3d_devices
+from rgbd_camera import AsyncRecord3DCamera, RGBDFrame, Record3DCamera, list_record3d_devices
 from session_recorder import SessionRecorder
 from ui import draw_scene
 from utils import FPSCounter
@@ -112,6 +112,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-landmark-smoothing", action="store_true", help="Disable landmark temporal smoothing")
     parser.add_argument("--landmark-smoothing-alpha", type=float, default=config.LANDMARK_SMOOTHING_ALPHA, help="Landmark smoothing alpha")
     parser.add_argument("--no-optical-stabilization", action="store_true", help="Disable optical-flow fingertip stabilization")
+    parser.add_argument("--no-fingertip-one-euro", action="store_true", help="Disable adaptive One Euro fingertip smoothing")
+    parser.add_argument("--fingertip-one-euro-min-cutoff", type=float, default=config.FINGERTIP_ONE_EURO_MIN_CUTOFF, help="Lower values stabilize resting fingertips more")
+    parser.add_argument("--fingertip-one-euro-beta", type=float, default=config.FINGERTIP_ONE_EURO_BETA, help="Higher values make fast fingertip motion more responsive")
+    parser.add_argument("--fingertip-one-euro-d-cutoff", type=float, default=config.FINGERTIP_ONE_EURO_D_CUTOFF, help="Derivative smoothing cutoff for One Euro fingertip filter")
     parser.add_argument(
         "--fingertip-refinement",
         action="store_true",
@@ -177,6 +181,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--record3d-rotate", type=int, choices=[0, 90, 180, 270], default=0, help="Rotate Record3D frames")
     parser.add_argument("--record3d-mirror", action="store_true", help="Mirror Record3D frames horizontally")
     parser.add_argument("--record3d-depth-unit", choices=["auto", "m", "cm", "mm"], default="auto", help="Record3D depth unit")
+    parser.add_argument("--async-record3d", dest="async_record3d", action="store_true", default=True, help="Read Record3D frames on a background latest-frame thread")
+    parser.add_argument("--no-async-record3d", dest="async_record3d", action="store_false", help="Use the older synchronous Record3D read path")
     parser.add_argument("--depth-contact-mode", choices=["auto", "off", "assist", "required"], default="auto", help="How RGB-D contact evidence gates piano hits")
     parser.add_argument("--depth-contact-threshold", type=float, default=config.DEPTH_CONTACT_THRESHOLD_M, help="Meters above calibrated desk considered contact")
     parser.add_argument("--depth-release-threshold", type=float, default=config.DEPTH_RELEASE_THRESHOLD_M, help="Meters above calibrated desk considered definitely in air")
@@ -281,7 +287,8 @@ def main() -> int:
 
     try:
         if args.camera_source == "record3d":
-            cap = Record3DCamera(
+            record3d_cls = AsyncRecord3DCamera if args.async_record3d else Record3DCamera
+            cap = record3d_cls(
                 device_index=args.record3d_device,
                 timeout_seconds=args.record3d_timeout,
                 rotate_degrees=args.record3d_rotate,
@@ -305,6 +312,10 @@ def main() -> int:
             smooth_landmarks=not args.no_landmark_smoothing,
             smoothing_alpha=args.landmark_smoothing_alpha,
             refine_fingertips=args.fingertip_refinement,
+            fingertip_one_euro_enabled=not args.no_fingertip_one_euro,
+            fingertip_one_euro_min_cutoff=args.fingertip_one_euro_min_cutoff,
+            fingertip_one_euro_beta=args.fingertip_one_euro_beta,
+            fingertip_one_euro_d_cutoff=args.fingertip_one_euro_d_cutoff,
         )
     except RuntimeError as exc:
         print(f"Startup error: {exc}", file=sys.stderr)

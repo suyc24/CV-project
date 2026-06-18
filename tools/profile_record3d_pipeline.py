@@ -23,7 +23,7 @@ from hand_tracker import HandTracker
 from hit_detector import HitDetector
 from instrument import InstrumentLayout
 from loop_station import LoopStation
-from rgbd_camera import Record3DCamera, list_record3d_devices
+from rgbd_camera import AsyncRecord3DCamera, Record3DCamera, list_record3d_devices
 from ui import draw_scene
 
 
@@ -42,6 +42,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--record3d-rotate", type=int, choices=[0, 90, 180, 270], default=0)
     parser.add_argument("--record3d-mirror", action="store_true")
     parser.add_argument("--record3d-depth-unit", choices=["auto", "m", "cm", "mm"], default="auto")
+    parser.add_argument("--async-record3d", dest="async_record3d", action="store_true", default=True)
+    parser.add_argument("--no-async-record3d", dest="async_record3d", action="store_false")
     parser.add_argument("--mode", choices=["piano", "drum"], default="piano")
     parser.add_argument("--instrument-roi", default="0.05,0.45,0.95,0.95")
     parser.add_argument("--paper-keyboard", action="store_true", default=True)
@@ -55,6 +57,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-landmark-smoothing", action="store_true")
     parser.add_argument("--landmark-smoothing-alpha", type=float, default=config.LANDMARK_SMOOTHING_ALPHA)
     parser.add_argument("--no-optical-stabilization", action="store_true")
+    parser.add_argument("--no-fingertip-one-euro", action="store_true")
+    parser.add_argument("--fingertip-one-euro-min-cutoff", type=float, default=config.FINGERTIP_ONE_EURO_MIN_CUTOFF)
+    parser.add_argument("--fingertip-one-euro-beta", type=float, default=config.FINGERTIP_ONE_EURO_BETA)
+    parser.add_argument("--fingertip-one-euro-d-cutoff", type=float, default=config.FINGERTIP_ONE_EURO_D_CUTOFF)
     parser.add_argument("--fingertip-refinement", action="store_true")
     parser.add_argument("--piano-left-trim-keys", type=float, default=config.PIANO_LEFT_TRIM_KEYS)
     parser.add_argument("--piano-right-trim-keys", type=float, default=config.PIANO_RIGHT_TRIM_KEYS)
@@ -102,6 +108,10 @@ def main() -> int:
             smooth_landmarks=not args.no_landmark_smoothing,
             smoothing_alpha=args.landmark_smoothing_alpha,
             refine_fingertips=args.fingertip_refinement,
+            fingertip_one_euro_enabled=not args.no_fingertip_one_euro,
+            fingertip_one_euro_min_cutoff=args.fingertip_one_euro_min_cutoff,
+            fingertip_one_euro_beta=args.fingertip_one_euro_beta,
+            fingertip_one_euro_d_cutoff=args.fingertip_one_euro_d_cutoff,
         )
     depth_estimator = None
     if not args.skip_depth and args.depth_contact_mode != "off":
@@ -117,7 +127,8 @@ def main() -> int:
     highlights: dict[str, float] = {}
     window_name = "AirDesk Record3D Profiler"
 
-    cap = Record3DCamera(
+    record3d_cls = AsyncRecord3DCamera if args.async_record3d else Record3DCamera
+    cap = record3d_cls(
         device_index=args.record3d_device,
         timeout_seconds=args.record3d_timeout,
         rotate_degrees=args.record3d_rotate,
@@ -345,6 +356,8 @@ def diagnose(stage_summary: dict[str, dict[str, float]], rows: list[dict[str, An
     tracking_mean = stage_summary.get("hand_tracking_ms", {}).get("mean_ms", 0.0)
     draw_mean = stage_summary.get("draw_scene_ms", {}).get("mean_ms", 0.0)
     display_mean = stage_summary.get("display_ms", {}).get("mean_ms", 0.0)
+    async_age_mean = stage_summary.get("async_frame_age_ms", {}).get("mean_ms", 0.0)
+    async_dropped_mean = stage_summary.get("async_dropped_frames", {}).get("mean_ms", 0.0)
     input_fps_mean = mean([float(row["input_fps"]) for row in rows]) if rows else 0.0
     callback_mean = stage_summary.get("record3d_callback_interval_ms", {}).get("mean_ms", 0.0)
     callback_fps_mean = 1000.0 / callback_mean if callback_mean > 0 else 0.0
@@ -358,6 +371,10 @@ def diagnose(stage_summary: dict[str, dict[str, float]], rows: list[dict[str, An
         notes.append("MediaPipe hand tracking is a major bottleneck; reduce --tracking-max-width or ROI/full-frame reacquire work.")
     if draw_mean + display_mean > 0.25 * max(1e-9, loop_mean):
         notes.append("Drawing/display is a major bottleneck; disable hand cutout/markers or use a smaller window.")
+    if async_age_mean > 80.0:
+        notes.append("Async Record3D frame age is high; the consumer loop is lagging behind the latest camera frame.")
+    if async_dropped_mean >= 0.5:
+        notes.append("Async Record3D is dropping old frames, which is good for latency but means downstream processing is slower than input.")
     if not notes:
         notes.append("No single dominant bottleneck found; inspect stage_summary p90/p99 for spikes.")
     return notes
@@ -407,12 +424,18 @@ def live_report(frame_count: int, target: int, rows: list[dict[str, Any]], stats
 
 
 def profile_debug_lines(stage: dict[str, float]) -> list[str]:
-    return [
+    lines = [
         f"cam wait {stage.get('record3d_wait_ms', 0.0):.1f} ms",
         f"track {stage.get('hand_tracking_ms', 0.0):.1f} ms",
         f"depth {stage.get('depth_contact_ms', 0.0):.1f} ms",
         f"draw {stage.get('draw_scene_ms', 0.0):.1f} ms",
     ]
+    if "async_frame_age_ms" in stage:
+        lines.append(
+            f"async age {stage.get('async_frame_age_ms', 0.0):.1f} ms "
+            f"drop {stage.get('async_dropped_frames', 0.0):.0f}"
+        )
+    return lines
 
 
 def parse_roi(raw: Optional[str]) -> Optional[tuple[float, float, float, float]]:
