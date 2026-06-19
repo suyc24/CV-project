@@ -329,7 +329,7 @@ def build_summary(
                 "share_of_loop": value["mean_ms"] / max(1e-9, stage_summary.get("loop_total_ms", {}).get("mean_ms", 0.0)),
             }
             for key, value in stage_summary.items()
-            if key != "loop_total_ms"
+            if key != "loop_total_ms" and key.endswith("_ms")
         ),
         key=lambda item: item["mean_ms"],
         reverse=True,
