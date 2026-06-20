@@ -18,6 +18,7 @@ except Exception as exc:  # pragma: no cover - depends on local install
 import numpy as np
 
 import config
+from benchmark_guide import GUIDE_SEQUENCES, GuidedNoteSequence, create_guide
 from audio_engine import AudioEngine
 from camera_utils import (
     CameraSettings,
@@ -189,6 +190,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--depth-baseline-frames", type=int, default=config.DEPTH_BASELINE_FRAMES, help="Frames used for desk depth calibration")
     parser.add_argument("--depth-min-confidence", type=float, default=config.DEPTH_MIN_CONFIDENCE, help="Minimum Record3D confidence for contact gating")
     parser.add_argument("--auto-depth-baseline", action="store_true", help="Continuously build a depth baseline while uncalibrated")
+    guide_choices = ["none", *sorted(GUIDE_SEQUENCES)]
+    parser.add_argument("--guide-sequence", choices=guide_choices, default="none", help="Show a benchmark note guide and auto-write annotations.csv")
+    parser.add_argument("--guide-first-onset", type=float, default=2.0, help="Seconds after recording starts for the first guided note")
+    parser.add_argument("--guide-notes-per-second", type=float, default=2.0, help="Guided note tempo")
     return parser.parse_args()
 
 
@@ -225,6 +230,18 @@ def open_camera(camera_index: int, settings: CameraSettings, warmup_frames: int 
 def main() -> int:
     args = parse_args()
     apply_runtime_tracking_config(args)
+    try:
+        guide = create_guide(
+            args.guide_sequence,
+            first_onset=args.guide_first_onset,
+            notes_per_second=args.guide_notes_per_second,
+        )
+    except ValueError as exc:
+        print(f"Argument error: {exc}", file=sys.stderr)
+        return 1
+    if guide is not None and not args.record_session:
+        print("Argument error: --guide-sequence requires --record-session so annotations align with frames.jsonl.", file=sys.stderr)
+        return 1
     camera_settings = build_camera_settings(args) if args.camera_source == "webcam" else CameraSettings()
     try:
         instrument_roi = parse_roi(args.instrument_roi)
@@ -366,6 +383,7 @@ def main() -> int:
             layout=layout,
             deferred_until_depth_ready=False,
         )
+        maybe_write_guide_annotations(recorder, guide)
 
     try:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -451,6 +469,7 @@ def main() -> int:
                             layout=layout,
                             deferred_until_depth_ready=True,
                         )
+                        maybe_write_guide_annotations(recorder, guide)
                         recording_start_countdown = -1
                 else:
                     recording_start_countdown = None
@@ -511,6 +530,8 @@ def main() -> int:
                 ),
                 draw_instrument_overlay=not (args.hide_instrument_overlay or args.paper_keyboard),
             )
+            if guide is not None and recorder is not None:
+                guide.draw_overlay(display_frame, current_time - recorder.start_time)
 
             output_frame = _display_frame(display_frame, display_scale, args.window_width, args.window_height)
             output_size = (output_frame.shape[1], output_frame.shape[0])
@@ -648,6 +669,20 @@ def create_session_recorder(
     )
     print(f"Recording session to {args.record_session}")
     return recorder
+
+
+def maybe_write_guide_annotations(
+    recorder: SessionRecorder,
+    guide: Optional[GuidedNoteSequence],
+) -> None:
+    if guide is None:
+        return
+    annotations_path = guide.write_annotations(recorder.output_dir, overwrite=True)
+    print(
+        f"Guide `{guide.name}` active: {len(guide.events)} note(s), "
+        f"first={guide.first_onset:.2f}s, tempo={guide.notes_per_second:.2f} note/s"
+    )
+    print(f"Guide annotations written: {annotations_path}")
 
 
 def build_camera_settings(args: argparse.Namespace) -> CameraSettings:

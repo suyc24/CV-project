@@ -10,6 +10,7 @@ from typing import Any, Iterable, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from benchmark_guide import ADJACENT_KEY_NOTES, GUIDE_SEQUENCES, SINGLE_FINGER_CHECK_NOTES, TWINKLE_NOTES  # noqa: E402
 from tools.run_demo_benchmark import (  # noqa: E402
     aggregate_totals,
     benchmark_config,
@@ -23,14 +24,7 @@ from tools.run_demo_benchmark import (  # noqa: E402
 ROOT = Path("data/sessions/benchmarks_3d")
 DEFAULT_ROOT = ROOT / "twinkle_right_hand"
 DEFAULT_NOTES_PER_SECOND = 2.0
-TWINKLE_NOTES = (
-    "C4", "C4", "G4", "G4", "A4", "A4", "G4",
-    "F4", "F4", "E4", "E4", "D4", "D4", "C4",
-    "G4", "G4", "F4", "F4", "E4", "E4", "D4",
-    "G4", "G4", "F4", "F4", "E4", "E4", "D4",
-    "C4", "C4", "G4", "G4", "A4", "A4", "G4",
-    "F4", "F4", "E4", "E4", "D4", "D4", "C4",
-)
+DEFAULT_GUIDE_FIRST_ONSET = 2.0
 
 
 @dataclass(frozen=True)
@@ -42,6 +36,8 @@ class ClipSpec:
     notes: tuple[str, ...] = ()
     expected_zero_hits: bool = False
     holdout: bool = False
+    guide_sequence: Optional[str] = None
+    guide_notes_per_second: float = DEFAULT_NOTES_PER_SECOND
 
     @property
     def relative_dir(self) -> Path:
@@ -72,19 +68,17 @@ CLIPS = (
             "无名指 F4 6 次，小指 G4 6 次。每次敲击间隔约 0.5 秒。"
         ),
         notes=(
-            ("C4",) * 6
-            + ("D4",) * 6
-            + ("E4",) * 6
-            + ("F4",) * 6
-            + ("G4",) * 6
+            SINGLE_FINGER_CHECK_NOTES
         ),
+        guide_sequence="single_finger_checks",
     ),
     ClipSpec(
         split="dev",
         name="04_adjacent_keys",
         title="相邻键错音检查",
         instruction="右手单手慢速弹 C4 D4 E4 F4 G4 F4 E4 D4 C4，连续 2 遍。",
-        notes=("C4", "D4", "E4", "F4", "G4", "F4", "E4", "D4", "C4") * 2,
+        notes=ADJACENT_KEY_NOTES,
+        guide_sequence="adjacent_keys",
     ),
     ClipSpec(
         split="dev",
@@ -92,6 +86,8 @@ CLIPS = (
         title="小星星慢速",
         instruction="右手单手弹《小星星》1 遍，略慢于正常演示速度。",
         notes=TWINKLE_NOTES,
+        guide_sequence="twinkle",
+        guide_notes_per_second=1.5,
     ),
     ClipSpec(
         split="dev",
@@ -99,6 +95,7 @@ CLIPS = (
         title="小星星正常速度 take 1",
         instruction="右手单手弹《小星星》1 遍，约每秒 2 个音。",
         notes=TWINKLE_NOTES,
+        guide_sequence="twinkle",
     ),
     ClipSpec(
         split="dev",
@@ -106,6 +103,7 @@ CLIPS = (
         title="小星星正常速度 take 2",
         instruction="右手单手弹《小星星》1 遍，约每秒 2 个音。",
         notes=TWINKLE_NOTES,
+        guide_sequence="twinkle",
     ),
     ClipSpec(
         split="holdout",
@@ -122,6 +120,7 @@ CLIPS = (
         instruction="右手单手弹《小星星》1 遍，约每秒 2 个音。",
         notes=TWINKLE_NOTES,
         holdout=True,
+        guide_sequence="twinkle",
     ),
     ClipSpec(
         split="holdout",
@@ -130,14 +129,16 @@ CLIPS = (
         instruction="右手单手弹《小星星》1 遍，约每秒 2 个音。",
         notes=TWINKLE_NOTES,
         holdout=True,
+        guide_sequence="twinkle",
     ),
     ClipSpec(
         split="holdout",
         name="04_twinkle_natural_variation",
         title="holdout 自然演示",
-        instruction="右手单手自然弹《小星星》1 遍，不刻意配合算法。",
+        instruction="右手单手跟随引导弹《小星星》1 遍，手型和动作保持自然。",
         notes=TWINKLE_NOTES,
         holdout=True,
+        guide_sequence="twinkle",
     ),
 )
 
@@ -154,6 +155,7 @@ def parse_args() -> argparse.Namespace:
     commands.add_argument("--tracking-max-width", type=int, default=320)
     commands.add_argument("--window-width", type=int, default=640)
     commands.add_argument("--window-height", type=int, default=480)
+    commands.add_argument("--guide-first-onset", type=float, default=DEFAULT_GUIDE_FIRST_ONSET)
 
     annotate = subparsers.add_parser("annotate", help="Generate annotations.csv for one recorded clip")
     annotate.add_argument("clip", help="Clip name, e.g. 06_twinkle_normal_take1, or split/name")
@@ -250,9 +252,22 @@ def print_record_commands(root: Path, args: argparse.Namespace) -> None:
                     f"--window-height {args.window_height}",
                     "--no-fingertip-markers",
                 ]
+                + guide_command_args(spec, args.guide_first_onset)
             )
         )
         print()
+
+
+def guide_command_args(spec: ClipSpec, first_onset: float) -> list[str]:
+    if not spec.guide_sequence:
+        return []
+    if spec.guide_sequence not in GUIDE_SEQUENCES:
+        raise SystemExit(f"Unknown guide sequence in clip spec: {spec.guide_sequence}")
+    return [
+        f"--guide-sequence {spec.guide_sequence}",
+        f"--guide-first-onset {first_onset:.3f}",
+        f"--guide-notes-per-second {spec.guide_notes_per_second:.3f}",
+    ]
 
 
 def write_annotations(
