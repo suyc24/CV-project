@@ -153,8 +153,8 @@ def parse_args() -> argparse.Namespace:
     commands = subparsers.add_parser("record-commands", help="Print one main.py recording command per clip")
     commands.add_argument("--python", default=".venv/bin/python")
     commands.add_argument("--tracking-max-width", type=int, default=320)
-    commands.add_argument("--window-width", type=int, default=640)
-    commands.add_argument("--window-height", type=int, default=480)
+    commands.add_argument("--window-width", type=int, default=960)
+    commands.add_argument("--window-height", type=int, default=720)
     commands.add_argument("--guide-first-onset", type=float, default=DEFAULT_GUIDE_FIRST_ONSET)
 
     annotate = subparsers.add_parser("annotate", help="Generate annotations.csv for one recorded clip")

@@ -127,7 +127,7 @@ guide_spec.json
    目标：不应触发任何音。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/01_rest_both_hands --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/01_rest_both_hands --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers
    ```
 
 2. `dev/02_hover_both_hands`
@@ -135,7 +135,7 @@ guide_spec.json
    目标：不应触发任何音。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/02_hover_both_hands --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/02_hover_both_hands --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers
    ```
 
 3. `dev/03_single_finger_checks`
@@ -147,7 +147,7 @@ guide_spec.json
    - 小指 G4 6 次
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/03_single_finger_checks --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers --guide-sequence single_finger_checks --guide-first-onset 2.000 --guide-notes-per-second 2.000
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/03_single_finger_checks --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers --guide-sequence single_finger_checks --guide-first-onset 2.000 --guide-notes-per-second 2.000
    ```
 
 4. `dev/04_adjacent_keys`
@@ -160,7 +160,7 @@ guide_spec.json
    连续 2 遍。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/04_adjacent_keys --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers --guide-sequence adjacent_keys --guide-first-onset 2.000 --guide-notes-per-second 2.000
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/04_adjacent_keys --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers --guide-sequence adjacent_keys --guide-first-onset 2.000 --guide-notes-per-second 2.000
    ```
 
 5. `dev/05_twinkle_slow`
@@ -168,7 +168,7 @@ guide_spec.json
    该段引导速度约每秒 1.5 个音。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/05_twinkle_slow --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 1.500
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/05_twinkle_slow --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 1.500
    ```
 
 6. `dev/06_twinkle_normal_take1`
@@ -176,14 +176,14 @@ guide_spec.json
    该段引导速度约每秒 2 个音。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/06_twinkle_normal_take1 --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/06_twinkle_normal_take1 --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
    ```
 
 7. `dev/07_twinkle_normal_take2`
    右手单手跟随引导，正常速度弹《小星星》再录 1 遍。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/07_twinkle_normal_take2 --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/dev/07_twinkle_normal_take2 --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
    ```
 
 ### Holdout 数据
@@ -193,21 +193,21 @@ guide_spec.json
    目标：不应触发任何音。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/holdout/01_rest_single_hand --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/holdout/01_rest_single_hand --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers
    ```
 
 2. `holdout/02_twinkle_normal_take1`
    右手单手跟随引导，正常速度弹《小星星》1 遍。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/holdout/02_twinkle_normal_take1 --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/holdout/02_twinkle_normal_take1 --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
    ```
 
 3. `holdout/03_twinkle_normal_take2`
    右手单手跟随引导，正常速度弹《小星星》1 遍。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/holdout/03_twinkle_normal_take2 --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/holdout/03_twinkle_normal_take2 --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
    ```
 
 4. `holdout/04_twinkle_natural_variation`
@@ -215,7 +215,7 @@ guide_spec.json
    手型和动作尽量自然，不要刻意配合算法。
 
    ```bash
-   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/holdout/04_twinkle_natural_variation --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 640 --window-height 480 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
+   .venv/bin/python main.py --camera-source record3d --mode piano --paper-keyboard --record-session data/sessions/benchmarks_3d/twinkle_right_hand/holdout/04_twinkle_natural_variation --record-immediately --instrument-roi 0.05,0.45,0.95,0.95 --piano-left-trim-keys 1.5 --piano-sensitivity balanced --tracking-max-width 320 --hand-model-complexity 0 --window-width 960 --window-height 720 --no-fingertip-markers --guide-sequence twinkle --guide-first-onset 2.000 --guide-notes-per-second 2.000
    ```
 
 ## 8. 每段录完后检查文件
