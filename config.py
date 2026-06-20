@@ -53,10 +53,25 @@ PIANO_STRIKE_MIN_NET_DROP_PX = 4.0
 PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX = 64.0
 PIANO_STRIKE_STRONG_DROP_MULTIPLIER = 1.7
 PIANO_STRIKE_STRONG_VELOCITY_MULTIPLIER = 1.45
+# A single-frame, non-strong downward step is indistinguishable from fingertip
+# jitter (residual jitter p95 ~16-20px overlaps the 6px strike threshold). When
+# True, a strike must show a *sustained* descent (>=2 falling frames, handled
+# earlier in the guard) or genuinely strong motion; a lone falling frame is
+# treated as jitter instead of passing the old "any drop < 64px" fallback.
+PIANO_STRIKE_REQUIRE_SUSTAINED_FALL = True
 PIANO_USE_RELATIVE_FINGER_MOTION = True
 PIANO_MONOPHONIC_PER_HAND = False
 PIANO_MAX_HITS_PER_HAND_PER_FRAME = 1
 PIANO_THUMB_SCORE_WEIGHT = 0.82
+# In assist mode the depth path should only ASSIST the 2D trigger (arm a lifting
+# finger) and suppress clearly-in-air strikes. Its near-desk motion states
+# (depth_resting / depth_not_armed / depth_falling / depth_short_drop /
+# depth_velocity) used to early-return and short-circuit the 2D strike, so fingers
+# that sit low near the desk — the thumb on C4, low-lift taps — could never tap.
+# When False those states fall through to the 2D strike logic (clear-air blocking
+# still applies via _depth_contact_block_reason; contact_arm_guard still blocks).
+# Set True to restore the old depth-blocks-2D behaviour.
+PIANO_DEPTH_ASSIST_BLOCKS_STRIKE = False
 PIANO_HIT_MIN_VELOCITY = 60.0
 PIANO_HIT_MAX_VELOCITY = 420.0
 PIANO_MIN_VOLUME = 0.22
@@ -68,8 +83,26 @@ PIANO_THUMB_HIT_MIN_KEY_Y_RATIO = 0.20
 PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT = False
 PIANO_PASSIVE_ARM_MAX_CONTACT_HEIGHT_M = 0.003
 PIANO_ZONE_STICKY_ENABLED = True
+# Horizontal calibration compensation (px) added to the fingertip x used for key
+# selection. The tracked thumb/index tips sit left of the key the player presses,
+# so their taps land one key to the left (C4->B3, D4->C4). A small positive offset
+# nudges key selection right to compensate. 0 = off (no calibration shift).
+# A GLOBAL shift only hurt (it pushes the well-centred middle/ring/pinky off their
+# keys), so the offset applies ONLY to the fingers that actually land left.
+PIANO_ZONE_X_OFFSET_PX = -8  # reversed keyboard => thumb/index land right; nudge left
+PIANO_ZONE_X_OFFSET_FINGER_IDS = (4, 8)
 PIANO_ZONE_STICKY_X_MARGIN_RATIO = 0.08
 PIANO_ZONE_STICKY_MAX_STEP_PX = 18.0
+# Keep zone stickiness active during the downward strike. Without it the landing
+# key is chosen from the momentary fingertip x, so a finger hovering over its key
+# that slips slightly sideways as it dips registers on the neighbouring (usually
+# left) key — the thumb on C4 lands on B3, the index on D4 lands on C4. With it,
+# a dipping finger commits to the key it was hovering over (still bounded by the
+# sticky x-margin and max-step, so a genuine move to an adjacent key is allowed).
+# NOTE: empirically this over-sticks during Twinkle's frequent key changes and
+# hurt more than it fixed, so it is OFF; the thumb/index left-offset is really a
+# keyboard horizontal-calibration issue, not a trigger bug.
+PIANO_ZONE_STICKY_DURING_FALL = False
 PIANO_LEFT_TRIM_KEYS = 0.0
 PIANO_RIGHT_TRIM_KEYS = 0.0
 PIANO_3D_TRIGGER_ENABLED = True
