@@ -856,7 +856,10 @@ class HitDetector:
         key_depth_reason = self._key_depth_block_reason(zone, finger_id, finger_y)
         if key_depth_reason:
             return key_depth_reason
-        if strike_velocity >= config.PIANO_STRIKE_MIN_VELOCITY:
+        min_velocity = config.PIANO_STRIKE_MIN_VELOCITY
+        if finger_id == 4:
+            min_velocity = max(min_velocity, config.PIANO_THUMB_STRIKE_MIN_VELOCITY)
+        if strike_velocity >= min_velocity:
             return "hit"
         return "velocity"
 
