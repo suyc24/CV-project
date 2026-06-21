@@ -74,10 +74,6 @@ PIANO_THUMB_SCORE_WEIGHT = 0.82
 PIANO_DEPTH_ASSIST_BLOCKS_STRIKE = False
 PIANO_HIT_MIN_VELOCITY = 60.0
 PIANO_HIT_MAX_VELOCITY = 420.0
-# The thumb couples passively to hand motion when an adjacent finger taps, firing
-# weak spurious C4 hits. A higher strike-velocity floor for the thumb requires a
-# deliberate thumb tap (real C4 taps here are >=139 px/s; passive intrusions <=137).
-PIANO_THUMB_STRIKE_MIN_VELOCITY = 138.0
 PIANO_MIN_VOLUME = 0.22
 PIANO_HIT_X_MARGIN_RATIO = 0.06
 PIANO_HIT_TOP_MARGIN_RATIO = 0.28
