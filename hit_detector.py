@@ -124,6 +124,8 @@ class HitDetector:
                     continue
                 state = self._states.setdefault((hand_id, finger_id), FingerState())
                 x, y, _ = hand.landmarks[finger_id]
+                if finger_id in config.PIANO_ZONE_X_OFFSET_FINGER_IDS:
+                    x += config.PIANO_ZONE_X_OFFSET_PX
                 position = (x, y)
                 relative_y = y - self._finger_anchor_y(hand.landmarks, finger_id)
                 state.trail.append(position)
@@ -699,8 +701,26 @@ class HitDetector:
         depth_reason = self._piano_3d_miss_reason(state, depth_observation, current_time)
         if depth_reason is not None:
             if depth_reason in {"depth_lifting", "depth_armed"}:
+                # Depth says the finger is up: arm the 2D state (assist) and wait.
                 self._arm_piano_from_current_position(state, zone, finger_y, relative_y)
-            return depth_reason
+                return depth_reason
+            # Near-desk depth motion states would otherwise short-circuit the 2D
+            # strike. The thumb sits flat on the desk so its depth is permanently
+            # "contact"/"resting" and blocks every tap; let the thumb's near-desk
+            # states fall through to 2D. Other fingers keep depth suppression (it
+            # protects the rest/hover guardrails). contact_arm_guard and clear-air
+            # blocks still apply to all fingers.
+            depth_motion_states = {
+                "depth_resting", "depth_not_armed", "depth_falling",
+                "depth_short_drop", "depth_velocity",
+            }
+            thumb_fallthrough = (
+                finger_id == 4
+                and not config.PIANO_DEPTH_ASSIST_BLOCKS_STRIKE
+                and depth_reason in depth_motion_states
+            )
+            if not thumb_fallthrough:
+                return depth_reason
 
         arm_y = zone.y1 + config.PIANO_ARM_RATIO * zone.height
         motion_y = relative_y if config.PIANO_USE_RELATIVE_FINGER_MOTION else finger_y
@@ -1022,6 +1042,11 @@ class HitDetector:
         if strong_drop and strong_velocity:
             return True
 
+        # A lone falling frame that is neither sustained nor strong looks just
+        # like jitter; only let it through when the sustained-fall guard is off.
+        if config.PIANO_STRIKE_REQUIRE_SUSTAINED_FALL:
+            return False
+
         return self._last_frame_drop(state) <= config.PIANO_STRIKE_MAX_SINGLE_FRAME_DROP_PX
 
     def _passes_release_motion_guard(self, state: FingerState) -> bool:
@@ -1213,7 +1238,10 @@ class HitDetector:
     ) -> Optional[Zone]:
         if not config.PIANO_ZONE_STICKY_ENABLED or previous_position is None or not state.last_zone_id:
             return None
-        if state.motion_state == "falling" or self._motion_velocity(state) > config.PIANO_FALLING_VELOCITY_THRESHOLD:
+        if not config.PIANO_ZONE_STICKY_DURING_FALL and (
+            state.motion_state == "falling"
+            or self._motion_velocity(state) > config.PIANO_FALLING_VELOCITY_THRESHOLD
+        ):
             return None
         if current is not None and current.kind != "piano":
             return None
