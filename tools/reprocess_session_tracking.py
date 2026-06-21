@@ -36,7 +36,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-tracking-roi", action="store_true")
     parser.add_argument("--tracking-roi-y", type=float, default=config.TRACKING_ROI_Y_MIN)
     parser.add_argument("--tracking-max-width", type=int, default=config.TRACKING_MAX_WIDTH)
-    parser.add_argument("--hand-model-complexity", type=int, choices=[0, 1], default=config.HAND_MODEL_COMPLEXITY)
     parser.add_argument("--max-hands", type=int, default=2)
     parser.add_argument("--min-detection-confidence", type=float, default=config.HAND_MIN_DETECTION_CONFIDENCE)
     parser.add_argument("--min-tracking-confidence", type=float, default=config.HAND_MIN_TRACKING_CONFIDENCE)
@@ -104,7 +103,6 @@ def main() -> int:
             min_detection_confidence=args.min_detection_confidence,
             min_tracking_confidence=args.min_tracking_confidence,
             input_max_width=args.tracking_max_width,
-            model_complexity=args.hand_model_complexity,
             smooth_landmarks=not args.no_landmark_smoothing,
             smoothing_alpha=args.landmark_smoothing_alpha,
             refine_fingertips=args.fingertip_refinement,
@@ -201,7 +199,6 @@ def main() -> int:
             "TRACKING_FULL_MISS_REACQUIRE_HIT_BLOCK_FRAMES": config.TRACKING_FULL_MISS_REACQUIRE_HIT_BLOCK_FRAMES,
             "TRACKING_NEW_HAND_HIT_BLOCK_FRAMES": config.TRACKING_NEW_HAND_HIT_BLOCK_FRAMES,
             "TRACKING_MAX_WIDTH": args.tracking_max_width,
-            "HAND_MODEL_COMPLEXITY": args.hand_model_complexity,
         },
     }
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

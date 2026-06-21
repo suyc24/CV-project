@@ -25,61 +25,6 @@ HAND_CONNECTIONS = (
 )
 
 
-class LowPassFilter:
-    def __init__(self) -> None:
-        self.value: Optional[float] = None
-
-    def filter(self, value: float, alpha: float) -> float:
-        if self.value is None:
-            self.value = float(value)
-        else:
-            self.value = alpha * float(value) + (1.0 - alpha) * self.value
-        return self.value
-
-
-class OneEuroScalarFilter:
-    def __init__(self, min_cutoff: float, beta: float, d_cutoff: float) -> None:
-        self._min_cutoff = max(1e-6, float(min_cutoff))
-        self._beta = max(0.0, float(beta))
-        self._d_cutoff = max(1e-6, float(d_cutoff))
-        self._value_filter = LowPassFilter()
-        self._derivative_filter = LowPassFilter()
-        self._last_time: Optional[float] = None
-
-    def filter(self, value: float, timestamp: float) -> float:
-        if self._last_time is None:
-            self._last_time = timestamp
-            return self._value_filter.filter(value, 1.0)
-        dt = max(1e-3, float(timestamp) - self._last_time)
-        self._last_time = timestamp
-
-        previous = self._value_filter.value
-        derivative = 0.0 if previous is None else (float(value) - previous) / dt
-        derivative_hat = self._derivative_filter.filter(derivative, self._alpha(self._d_cutoff, dt))
-        cutoff = self._min_cutoff + self._beta * abs(derivative_hat)
-        return self._value_filter.filter(value, self._alpha(cutoff, dt))
-
-    @staticmethod
-    def _alpha(cutoff: float, dt: float) -> float:
-        tau = 1.0 / (2.0 * math.pi * max(1e-6, cutoff))
-        return 1.0 / (1.0 + tau / max(1e-6, dt))
-
-
-class OneEuroPointFilter:
-    def __init__(self, min_cutoff: float, beta: float, d_cutoff: float) -> None:
-        self._filters = (
-            OneEuroScalarFilter(min_cutoff, beta, d_cutoff),
-            OneEuroScalarFilter(min_cutoff, beta, d_cutoff),
-            OneEuroScalarFilter(min_cutoff, beta, d_cutoff),
-        )
-
-    def filter(self, point: Tuple[float, float, float], timestamp: float) -> Tuple[float, float, float]:
-        return tuple(
-            scalar_filter.filter(float(value), timestamp)
-            for scalar_filter, value in zip(self._filters, point)
-        )
-
-
 @dataclass
 class HandLandmarks:
     hand_id: int
@@ -98,14 +43,9 @@ class HandTracker:
         min_detection_confidence: float = 0.55,
         min_tracking_confidence: float = 0.55,
         input_max_width: int = config.TRACKING_MAX_WIDTH,
-        model_complexity: int = config.HAND_MODEL_COMPLEXITY,
         smooth_landmarks: bool = True,
         smoothing_alpha: float = config.LANDMARK_SMOOTHING_ALPHA,
         refine_fingertips: bool = config.FINGERTIP_REFINEMENT_ENABLED,
-        fingertip_one_euro_enabled: bool = config.FINGERTIP_ONE_EURO_ENABLED,
-        fingertip_one_euro_min_cutoff: float = config.FINGERTIP_ONE_EURO_MIN_CUTOFF,
-        fingertip_one_euro_beta: float = config.FINGERTIP_ONE_EURO_BETA,
-        fingertip_one_euro_d_cutoff: float = config.FINGERTIP_ONE_EURO_D_CUTOFF,
     ) -> None:
         self._backend = ""
         self._hands = None
@@ -115,16 +55,9 @@ class HandTracker:
         self._last_timestamp_ms = 0
         self._frame_index = 0
         self._input_max_width = input_max_width
-        self._model_complexity = max(0, min(1, int(model_complexity)))
         self._smooth_landmarks = smooth_landmarks
         self._smoothing_alpha = smoothing_alpha
         self._smoothed_points: Dict[Tuple[int, int], Tuple[float, float, float]] = {}
-        self._one_euro_enabled = bool(fingertip_one_euro_enabled)
-        self._one_euro_min_cutoff = float(fingertip_one_euro_min_cutoff)
-        self._one_euro_beta = float(fingertip_one_euro_beta)
-        self._one_euro_d_cutoff = float(fingertip_one_euro_d_cutoff)
-        self._one_euro_landmark_ids = tuple(config.FINGERTIP_ONE_EURO_LANDMARK_IDS)
-        self._one_euro_filters: Dict[Tuple[int, int], OneEuroPointFilter] = {}
         self._tracked_hand_centers: Dict[int, Tuple[float, float, str]] = {}
         self._next_stable_hand_id = 0
         self._last_gray = None
@@ -153,7 +86,6 @@ class HandTracker:
                 max_num_hands=max_num_hands,
                 min_detection_confidence=min_detection_confidence,
                 min_tracking_confidence=min_tracking_confidence,
-                model_complexity=self._model_complexity,
             )
             return
         except Exception:
@@ -179,14 +111,13 @@ class HandTracker:
         max_num_hands: int,
         min_detection_confidence: float,
         min_tracking_confidence: float,
-        model_complexity: int,
     ) -> None:
         self._mp_hands = self._load_legacy_hands_module()
         try:
             self._hands = self._mp_hands.Hands(
                 static_image_mode=False,
                 max_num_hands=max_num_hands,
-                model_complexity=model_complexity,
+                model_complexity=1,
                 min_detection_confidence=min_detection_confidence,
                 min_tracking_confidence=min_tracking_confidence,
             )
@@ -243,7 +174,7 @@ class HandTracker:
     def process(self, frame_bgr, roi: Optional[Tuple[int, int, int, int]] = None) -> List[HandLandmarks]:
         self._frame_index += 1
         hands = self._detect(frame_bgr, roi)
-        if not hands and roi is not None and self._should_full_frame_reacquire():
+        if not hands and roi is not None and config.TRACKING_FULL_FRAME_REACQUIRE:
             hands = self._detect(frame_bgr, None)
         elif roi is not None and 0 < len(hands) < self._max_num_hands and self._should_partial_full_frame_reacquire():
             full_frame_hands = self._detect(frame_bgr, None)
@@ -270,7 +201,6 @@ class HandTracker:
         hands = self._smooth(hands)
         hands = self._refine_fingertips(frame_bgr, hands)
         hands = self._stabilize_with_optical_flow(frame_bgr, hands)
-        hands = self._apply_one_euro_filter(hands, time.perf_counter())
         if missed_before > 0:
             guard_frames = (
                 config.TRACKING_FULL_MISS_REACQUIRE_HIT_BLOCK_FRAMES
@@ -289,14 +219,6 @@ class HandTracker:
         if not config.TRACKING_PARTIAL_FULL_FRAME_REACQUIRE:
             return False
         interval = max(1, int(config.TRACKING_PARTIAL_REACQUIRE_INTERVAL_FRAMES))
-        return self._frame_index % interval == 0
-
-    def _should_full_frame_reacquire(self) -> bool:
-        if not config.TRACKING_FULL_FRAME_REACQUIRE:
-            return False
-        interval = max(1, int(config.TRACKING_FULL_REACQUIRE_INTERVAL_FRAMES))
-        if self._empty_detection_frames <= 0:
-            return True
         return self._frame_index % interval == 0
 
     def _refine_fingertips(self, frame_bgr, hands: List[HandLandmarks]) -> List[HandLandmarks]:
@@ -326,8 +248,6 @@ class HandTracker:
 
     def reset(self) -> None:
         self._smoothed_points.clear()
-        if hasattr(self, "_one_euro_filters"):
-            self._one_euro_filters.clear()
         self._tracked_hand_centers.clear()
         self._flow_points.clear()
         self._last_good_hands = []
@@ -631,46 +551,6 @@ class HandTracker:
         self._flow_points = next_flow_points
         return stabilized_hands
 
-    def _apply_one_euro_filter(self, hands: List[HandLandmarks], timestamp: float) -> List[HandLandmarks]:
-        if not getattr(self, "_one_euro_enabled", False):
-            return hands
-        active_keys = set()
-        landmark_ids = set(getattr(self, "_one_euro_landmark_ids", ()))
-        filtered_hands: List[HandLandmarks] = []
-        for hand in hands:
-            filtered_landmarks = []
-            for idx, (x, y, z) in enumerate(hand.landmarks):
-                key = (hand.hand_id, idx)
-                if idx not in landmark_ids:
-                    filtered_landmarks.append((x, y, z))
-                    continue
-                active_keys.add(key)
-                point_filter = self._one_euro_filters.get(key)
-                if point_filter is None:
-                    point_filter = OneEuroPointFilter(
-                        self._one_euro_min_cutoff,
-                        self._one_euro_beta,
-                        self._one_euro_d_cutoff,
-                    )
-                    self._one_euro_filters[key] = point_filter
-                sx, sy, sz = point_filter.filter((float(x), float(y), float(z)), timestamp)
-                filtered_landmarks.append((int(round(sx)), int(round(sy)), float(sz)))
-            filtered_hands.append(
-                HandLandmarks(
-                    hand_id=hand.hand_id,
-                    label=hand.label,
-                    landmarks=filtered_landmarks,
-                    normalized_landmarks=hand.normalized_landmarks,
-                    tracking_source=f"{hand.tracking_source}+one_euro",
-                    missed_frames=hand.missed_frames,
-                    unstable_landmark_ids=hand.unstable_landmark_ids,
-                )
-            )
-        for key in list(self._one_euro_filters):
-            if key not in active_keys:
-                del self._one_euro_filters[key]
-        return filtered_hands
-
     def _apply_hit_guards(self, hands: List[HandLandmarks]) -> List[HandLandmarks]:
         active_ids = {hand.hand_id for hand in hands}
         guarded: List[HandLandmarks] = []
@@ -781,8 +661,6 @@ class HandTracker:
 
     def _clear_after_miss(self, frame_bgr) -> None:
         self._smoothed_points.clear()
-        if hasattr(self, "_one_euro_filters"):
-            self._one_euro_filters.clear()
         self._tracked_hand_centers.clear()
         self._flow_points.clear()
         self._last_good_hands = []

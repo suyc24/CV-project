@@ -32,12 +32,11 @@ from hand_tracker import HandTracker
 FINGER_IDS = (4, 8, 12, 16, 20)
 FINGER_NAMES = {4: "thumb", 8: "index", 12: "middle", 16: "ring", 20: "pinky"}
 
-# (label, smooth_ema, optical_flow, one_euro)
-STAGES: Tuple[Tuple[str, bool, bool, bool], ...] = (
-    ("raw_mediapipe", False, False, False),
-    ("+ema", True, False, False),
-    ("+ema+flow", True, True, False),
-    ("full(+oneeuro)", True, True, True),
+# (label, smooth_ema, optical_flow)
+STAGES: Tuple[Tuple[str, bool, bool], ...] = (
+    ("raw_mediapipe", False, False),
+    ("+ema", True, False),
+    ("full(+ema+flow)", True, True),
 )
 
 
@@ -63,7 +62,6 @@ def _run_stage(
     video_path: Path,
     smooth_ema: bool,
     optical_flow: bool,
-    one_euro: bool,
     roi_y: float,
     max_width: int,
 ) -> Dict[int, List[Tuple[float, float]]]:
@@ -73,9 +71,7 @@ def _run_stage(
         min_detection_confidence=config.HAND_MIN_DETECTION_CONFIDENCE,
         min_tracking_confidence=config.HAND_MIN_TRACKING_CONFIDENCE,
         input_max_width=max_width,
-        model_complexity=config.HAND_MODEL_COMPLEXITY,
         smooth_landmarks=smooth_ema,
-        fingertip_one_euro_enabled=one_euro,
     )
     series: Dict[int, List[Tuple[float, float]]] = {fid: [] for fid in FINGER_IDS}
     cap = cv2.VideoCapture(str(video_path))
@@ -143,8 +139,8 @@ def main() -> int:
     print_fingers = [int(f) for f in args.fingers.split(",") if f.strip()]
 
     results: Dict[str, Dict[int, Dict[str, float]]] = {}
-    for label, ema, flow, euro in STAGES:
-        series = _run_stage(video_path, ema, flow, euro, args.roi_y, args.max_width)
+    for label, ema, flow in STAGES:
+        series = _run_stage(video_path, ema, flow, args.roi_y, args.max_width)
         results[label] = {fid: _jitter_metrics(series[fid]) for fid in FINGER_IDS}
         print(f"[done] stage={label}", file=sys.stderr)
 

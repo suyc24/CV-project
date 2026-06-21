@@ -50,17 +50,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tracking-max-width", type=int, default=config.TRACKING_MAX_WIDTH)
     parser.add_argument("--tracking-roi-y", type=float, default=config.TRACKING_ROI_Y_MIN)
     parser.add_argument("--no-tracking-roi", action="store_true")
-    parser.add_argument("--hand-model-complexity", type=int, choices=[0, 1], default=config.HAND_MODEL_COMPLEXITY)
     parser.add_argument("--max-hands", type=int, default=2)
     parser.add_argument("--min-detection-confidence", type=float, default=config.HAND_MIN_DETECTION_CONFIDENCE)
     parser.add_argument("--min-tracking-confidence", type=float, default=config.HAND_MIN_TRACKING_CONFIDENCE)
     parser.add_argument("--no-landmark-smoothing", action="store_true")
     parser.add_argument("--landmark-smoothing-alpha", type=float, default=config.LANDMARK_SMOOTHING_ALPHA)
     parser.add_argument("--no-optical-stabilization", action="store_true")
-    parser.add_argument("--no-fingertip-one-euro", action="store_true")
-    parser.add_argument("--fingertip-one-euro-min-cutoff", type=float, default=config.FINGERTIP_ONE_EURO_MIN_CUTOFF)
-    parser.add_argument("--fingertip-one-euro-beta", type=float, default=config.FINGERTIP_ONE_EURO_BETA)
-    parser.add_argument("--fingertip-one-euro-d-cutoff", type=float, default=config.FINGERTIP_ONE_EURO_D_CUTOFF)
     parser.add_argument("--fingertip-refinement", action="store_true")
     parser.add_argument("--piano-left-trim-keys", type=float, default=config.PIANO_LEFT_TRIM_KEYS)
     parser.add_argument("--piano-right-trim-keys", type=float, default=config.PIANO_RIGHT_TRIM_KEYS)
@@ -104,14 +99,9 @@ def main() -> int:
             min_detection_confidence=args.min_detection_confidence,
             min_tracking_confidence=args.min_tracking_confidence,
             input_max_width=args.tracking_max_width,
-            model_complexity=args.hand_model_complexity,
             smooth_landmarks=not args.no_landmark_smoothing,
             smoothing_alpha=args.landmark_smoothing_alpha,
             refine_fingertips=args.fingertip_refinement,
-            fingertip_one_euro_enabled=not args.no_fingertip_one_euro,
-            fingertip_one_euro_min_cutoff=args.fingertip_one_euro_min_cutoff,
-            fingertip_one_euro_beta=args.fingertip_one_euro_beta,
-            fingertip_one_euro_d_cutoff=args.fingertip_one_euro_d_cutoff,
         )
     depth_estimator = None
     if not args.skip_depth and args.depth_contact_mode != "off":

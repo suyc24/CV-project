@@ -94,9 +94,7 @@ def run_config(video_path: Path, mc: int, width: int, conf: float, roi_y: float)
         min_detection_confidence=conf,
         min_tracking_confidence=conf,
         input_max_width=width,
-        model_complexity=mc,
         smooth_landmarks=True,
-        fingertip_one_euro_enabled=True,
     )
     series: Dict[int, List[Tuple[float, float]]] = {f: [] for f in FINGER_IDS}
     times_ms: List[float] = []

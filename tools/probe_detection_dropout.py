@@ -28,7 +28,7 @@ def main() -> int:
     parser.add_argument("session_dir")
     parser.add_argument("--roi-y", type=float, default=config.TRACKING_ROI_Y_MIN)
     parser.add_argument("--max-width", type=int, default=config.TRACKING_MAX_WIDTH)
-    parser.add_argument("--mc", type=int, default=config.HAND_MODEL_COMPLEXITY)
+    parser.add_argument("--mc", type=int, default=1)
     parser.add_argument("--save-dir", default=None, help="Where to dump sample dropout frames")
     parser.add_argument("--save-n", type=int, default=4)
     args = parser.parse_args()
@@ -45,9 +45,7 @@ def main() -> int:
         min_detection_confidence=config.HAND_MIN_DETECTION_CONFIDENCE,
         min_tracking_confidence=config.HAND_MIN_TRACKING_CONFIDENCE,
         input_max_width=args.max_width,
-        model_complexity=args.mc,
         smooth_landmarks=True,
-        fingertip_one_euro_enabled=True,
     )
 
     present = []   # bool per frame
