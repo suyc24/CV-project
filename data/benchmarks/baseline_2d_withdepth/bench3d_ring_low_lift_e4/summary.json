@@ -1,0 +1,438 @@
+{
+  "session": "data/sessions/benchmarks_3d/bench3d_ring_low_lift_e4",
+  "annotations_path": "data/sessions/benchmarks_3d/bench3d_ring_low_lift_e4/annotations.csv",
+  "frames": 295,
+  "evaluated_start_frame": 65,
+  "evaluated_end_frame": 279,
+  "annotated": true,
+  "annotation_count": 8,
+  "predicted_count": 17,
+  "matched_count": 0,
+  "miss_count": 8,
+  "extra_count": 17,
+  "wrong_near_count": 5,
+  "precision": 0.0,
+  "recall": 0.0,
+  "score": -158.0,
+  "expected_notes": [
+    "E4",
+    "E4",
+    "E4",
+    "E4",
+    "E4",
+    "E4",
+    "E4",
+    "E4"
+  ],
+  "predicted_notes": [
+    "A4",
+    "A4",
+    "A4",
+    "A4",
+    "G4",
+    "D4",
+    "A4",
+    "A4",
+    "A4",
+    "E4",
+    "F4",
+    "G4",
+    "D4",
+    "E4",
+    "A4",
+    "G4",
+    "A4"
+  ],
+  "note_counts": {
+    "A4": 9,
+    "G4": 3,
+    "D4": 2,
+    "E4": 2,
+    "F4": 1
+  },
+  "finger_counts": {
+    "F4": 9,
+    "F8": 3,
+    "F20": 2,
+    "F16": 2,
+    "F12": 1
+  },
+  "reason_counts": {
+    "armed": 54,
+    "not_armed": 177,
+    "hit": 17,
+    "pressed": 589,
+    "lifting": 67,
+    "short_lift": 15,
+    "depth_not_armed": 3,
+    "key_depth_guard": 8,
+    "velocity": 41,
+    "short_drop": 8,
+    "suppressed_by_hand_cooldown": 8,
+    "unstable_tracking": 142,
+    "no_zone": 10,
+    "lifted": 10,
+    "depth_lifting": 1
+  },
+  "matches": [],
+  "misses": [
+    {
+      "onset": 10.669253,
+      "note": "E4",
+      "frame_index": 110
+    },
+    {
+      "onset": 12.221145,
+      "note": "E4",
+      "frame_index": 126
+    },
+    {
+      "onset": 14.064016,
+      "note": "E4",
+      "frame_index": 145
+    },
+    {
+      "onset": 15.809893,
+      "note": "E4",
+      "frame_index": 163
+    },
+    {
+      "onset": 17.555771,
+      "note": "E4",
+      "frame_index": 181
+    },
+    {
+      "onset": 19.107662,
+      "note": "E4",
+      "frame_index": 197
+    },
+    {
+      "onset": 20.562561,
+      "note": "E4",
+      "frame_index": 212
+    },
+    {
+      "onset": 22.696411,
+      "note": "E4",
+      "frame_index": 234
+    }
+  ],
+  "extras": [
+    {
+      "timestamp": 5.248187499993946,
+      "frame_index": 67,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 162.50145879791648
+    },
+    {
+      "timestamp": 6.480396400002064,
+      "frame_index": 82,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 204.5194786714361
+    },
+    {
+      "timestamp": 6.963512199989054,
+      "frame_index": 88,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 129.96414288849763
+    },
+    {
+      "timestamp": 7.422231599979568,
+      "frame_index": 94,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 142.38554484331257
+    },
+    {
+      "timestamp": 9.137644200003706,
+      "frame_index": 116,
+      "note": "G4",
+      "hand_id": 0,
+      "finger_id": 8,
+      "velocity": 130.5483028770184
+    },
+    {
+      "timestamp": 9.91795989999082,
+      "frame_index": 126,
+      "note": "D4",
+      "hand_id": 1,
+      "finger_id": 20,
+      "velocity": 209.0241706990655
+    },
+    {
+      "timestamp": 10.615237099991646,
+      "frame_index": 135,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 133.31002875113214
+    },
+    {
+      "timestamp": 11.147991599980742,
+      "frame_index": 142,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 181.17674890407017
+    },
+    {
+      "timestamp": 11.546080300002359,
+      "frame_index": 147,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 202.1440747987155
+    },
+    {
+      "timestamp": 11.875917099998333,
+      "frame_index": 151,
+      "note": "E4",
+      "hand_id": 1,
+      "finger_id": 16,
+      "velocity": 104.35394472286418
+    },
+    {
+      "timestamp": 12.340761500003282,
+      "frame_index": 157,
+      "note": "F4",
+      "hand_id": 1,
+      "finger_id": 12,
+      "velocity": 136.08301666914397
+    },
+    {
+      "timestamp": 12.557256800006144,
+      "frame_index": 160,
+      "note": "G4",
+      "hand_id": 1,
+      "finger_id": 8,
+      "velocity": 107.63321291063296
+    },
+    {
+      "timestamp": 14.136295799980871,
+      "frame_index": 180,
+      "note": "D4",
+      "hand_id": 2,
+      "finger_id": 20,
+      "velocity": 252.78697643351924
+    },
+    {
+      "timestamp": 14.658760899998015,
+      "frame_index": 187,
+      "note": "E4",
+      "hand_id": 2,
+      "finger_id": 16,
+      "velocity": 95.53157865041402
+    },
+    {
+      "timestamp": 14.798804699996253,
+      "frame_index": 189,
+      "note": "A4",
+      "hand_id": 2,
+      "finger_id": 4,
+      "velocity": 172.78791865719492
+    },
+    {
+      "timestamp": 17.842826399981277,
+      "frame_index": 228,
+      "note": "G4",
+      "hand_id": 1,
+      "finger_id": 8,
+      "velocity": 144.2846447646084
+    },
+    {
+      "timestamp": 19.470957299985457,
+      "frame_index": 250,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 184.90354972099692
+    }
+  ],
+  "wrong_near": [
+    {
+      "timestamp": 9.91795989999082,
+      "frame_index": 126,
+      "note": "D4",
+      "hand_id": 1,
+      "finger_id": 20,
+      "velocity": 209.0241706990655
+    },
+    {
+      "timestamp": 11.147991599980742,
+      "frame_index": 142,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 181.17674890407017
+    },
+    {
+      "timestamp": 11.546080300002359,
+      "frame_index": 147,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 202.1440747987155
+    },
+    {
+      "timestamp": 12.557256800006144,
+      "frame_index": 160,
+      "note": "G4",
+      "hand_id": 1,
+      "finger_id": 8,
+      "velocity": 107.63321291063296
+    },
+    {
+      "timestamp": 14.136295799980871,
+      "frame_index": 180,
+      "note": "D4",
+      "hand_id": 2,
+      "finger_id": 20,
+      "velocity": 252.78697643351924
+    }
+  ],
+  "predicted_hits": [
+    {
+      "timestamp": 5.248187499993946,
+      "frame_index": 67,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 162.50145879791648
+    },
+    {
+      "timestamp": 6.480396400002064,
+      "frame_index": 82,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 204.5194786714361
+    },
+    {
+      "timestamp": 6.963512199989054,
+      "frame_index": 88,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 129.96414288849763
+    },
+    {
+      "timestamp": 7.422231599979568,
+      "frame_index": 94,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 142.38554484331257
+    },
+    {
+      "timestamp": 9.137644200003706,
+      "frame_index": 116,
+      "note": "G4",
+      "hand_id": 0,
+      "finger_id": 8,
+      "velocity": 130.5483028770184
+    },
+    {
+      "timestamp": 9.91795989999082,
+      "frame_index": 126,
+      "note": "D4",
+      "hand_id": 1,
+      "finger_id": 20,
+      "velocity": 209.0241706990655
+    },
+    {
+      "timestamp": 10.615237099991646,
+      "frame_index": 135,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 133.31002875113214
+    },
+    {
+      "timestamp": 11.147991599980742,
+      "frame_index": 142,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 181.17674890407017
+    },
+    {
+      "timestamp": 11.546080300002359,
+      "frame_index": 147,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 202.1440747987155
+    },
+    {
+      "timestamp": 11.875917099998333,
+      "frame_index": 151,
+      "note": "E4",
+      "hand_id": 1,
+      "finger_id": 16,
+      "velocity": 104.35394472286418
+    },
+    {
+      "timestamp": 12.340761500003282,
+      "frame_index": 157,
+      "note": "F4",
+      "hand_id": 1,
+      "finger_id": 12,
+      "velocity": 136.08301666914397
+    },
+    {
+      "timestamp": 12.557256800006144,
+      "frame_index": 160,
+      "note": "G4",
+      "hand_id": 1,
+      "finger_id": 8,
+      "velocity": 107.63321291063296
+    },
+    {
+      "timestamp": 14.136295799980871,
+      "frame_index": 180,
+      "note": "D4",
+      "hand_id": 2,
+      "finger_id": 20,
+      "velocity": 252.78697643351924
+    },
+    {
+      "timestamp": 14.658760899998015,
+      "frame_index": 187,
+      "note": "E4",
+      "hand_id": 2,
+      "finger_id": 16,
+      "velocity": 95.53157865041402
+    },
+    {
+      "timestamp": 14.798804699996253,
+      "frame_index": 189,
+      "note": "A4",
+      "hand_id": 2,
+      "finger_id": 4,
+      "velocity": 172.78791865719492
+    },
+    {
+      "timestamp": 17.842826399981277,
+      "frame_index": 228,
+      "note": "G4",
+      "hand_id": 1,
+      "finger_id": 8,
+      "velocity": 144.2846447646084
+    },
+    {
+      "timestamp": 19.470957299985457,
+      "frame_index": 250,
+      "note": "A4",
+      "hand_id": 1,
+      "finger_id": 4,
+      "velocity": 184.90354972099692
+    }
+  ]
+}

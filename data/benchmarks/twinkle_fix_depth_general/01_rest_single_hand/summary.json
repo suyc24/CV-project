@@ -1,0 +1,104 @@
+{
+  "session": "data/sessions/benchmarks_3d/twinkle_right_hand/holdout/01_rest_single_hand",
+  "annotations_path": null,
+  "frames": 603,
+  "evaluated_start_frame": null,
+  "evaluated_end_frame": null,
+  "annotated": false,
+  "annotation_count": 0,
+  "predicted_count": 3,
+  "matched_count": 0,
+  "miss_count": 0,
+  "extra_count": 3,
+  "wrong_near_count": 0,
+  "precision": 0.0,
+  "recall": null,
+  "score": -3.0,
+  "expected_notes": [],
+  "predicted_notes": [
+    "G4",
+    "A4",
+    "B4"
+  ],
+  "note_counts": {
+    "G4": 1,
+    "A4": 1,
+    "B4": 1
+  },
+  "finger_counts": {
+    "F12": 1,
+    "F8": 1,
+    "F4": 1
+  },
+  "reason_counts": {
+    "no_zone": 380,
+    "unstable_tracking": 25,
+    "not_armed": 356,
+    "depth_lifting": 4,
+    "armed": 4,
+    "depth_armed": 2,
+    "hit": 3,
+    "jitter_guard": 5,
+    "pressed": 1082,
+    "suppressed_by_hand_cooldown": 1,
+    "lifting": 343,
+    "short_lift": 25,
+    "velocity": 14,
+    "lifted": 1
+  },
+  "matches": [],
+  "misses": [],
+  "extras": [
+    {
+      "timestamp": 18.808856199961156,
+      "frame_index": 177,
+      "note": "G4",
+      "hand_id": 2,
+      "finger_id": 12,
+      "velocity": 369.0091368818586
+    },
+    {
+      "timestamp": 18.9299553000601,
+      "frame_index": 179,
+      "note": "A4",
+      "hand_id": 2,
+      "finger_id": 8,
+      "velocity": 164.41175929093762
+    },
+    {
+      "timestamp": 19.750290199997835,
+      "frame_index": 193,
+      "note": "B4",
+      "hand_id": 2,
+      "finger_id": 4,
+      "velocity": 205.67561862246964
+    }
+  ],
+  "wrong_near": [],
+  "predicted_hits": [
+    {
+      "timestamp": 18.808856199961156,
+      "frame_index": 177,
+      "note": "G4",
+      "hand_id": 2,
+      "finger_id": 12,
+      "velocity": 369.0091368818586
+    },
+    {
+      "timestamp": 18.9299553000601,
+      "frame_index": 179,
+      "note": "A4",
+      "hand_id": 2,
+      "finger_id": 8,
+      "velocity": 164.41175929093762
+    },
+    {
+      "timestamp": 19.750290199997835,
+      "frame_index": 193,
+      "note": "B4",
+      "hand_id": 2,
+      "finger_id": 4,
+      "velocity": 205.67561862246964
+    }
+  ]
+}

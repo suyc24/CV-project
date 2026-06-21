@@ -1,0 +1,277 @@
+{
+  "session": "data/sessions/benchmarks_3d/bench3d_index_fast_g4",
+  "annotations_path": "data/sessions/benchmarks_3d/bench3d_index_fast_g4/annotations.csv",
+  "frames": 232,
+  "evaluated_start_frame": 20,
+  "evaluated_end_frame": 197,
+  "annotated": true,
+  "annotation_count": 12,
+  "predicted_count": 7,
+  "matched_count": 1,
+  "miss_count": 11,
+  "extra_count": 6,
+  "wrong_near_count": 3,
+  "precision": 0.14285714285714285,
+  "recall": 0.08333333333333333,
+  "score": -126.0,
+  "expected_notes": [
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4"
+  ],
+  "predicted_notes": [
+    "A4",
+    "A4",
+    "G4",
+    "A4",
+    "F4",
+    "E4",
+    "A4"
+  ],
+  "note_counts": {
+    "A4": 4,
+    "G4": 1,
+    "F4": 1,
+    "E4": 1
+  },
+  "finger_counts": {
+    "F4": 4,
+    "F8": 2,
+    "F12": 1
+  },
+  "reason_counts": {
+    "unstable_tracking": 238,
+    "not_armed": 286,
+    "armed": 17,
+    "jitter_guard": 14,
+    "hit": 7,
+    "pressed": 303,
+    "lifting": 101,
+    "short_lift": 17,
+    "velocity": 19,
+    "lifted": 2,
+    "depth_lifting": 1,
+    "key_depth_guard": 2,
+    "suppressed_by_hand_cooldown": 2,
+    "no_zone": 1
+  },
+  "matches": [
+    {
+      "expected": {
+        "onset": 7.443082,
+        "note": "G4",
+        "frame_index": 85
+      },
+      "hit": {
+        "timestamp": 6.631334500008961,
+        "frame_index": 87,
+        "note": "G4",
+        "hand_id": 0,
+        "finger_id": 8,
+        "velocity": 329.2235263317439
+      },
+      "frame_delta": 2,
+      "time_delta": -0.8117474999910392
+    }
+  ],
+  "misses": [
+    {
+      "onset": 5.691769,
+      "note": "G4",
+      "frame_index": 65
+    },
+    {
+      "onset": 6.217163,
+      "note": "G4",
+      "frame_index": 71
+    },
+    {
+      "onset": 6.830123,
+      "note": "G4",
+      "frame_index": 78
+    },
+    {
+      "onset": 8.406305,
+      "note": "G4",
+      "frame_index": 96
+    },
+    {
+      "onset": 9.10683,
+      "note": "G4",
+      "frame_index": 104
+    },
+    {
+      "onset": 9.894921,
+      "note": "G4",
+      "frame_index": 113
+    },
+    {
+      "onset": 10.507881,
+      "note": "G4",
+      "frame_index": 120
+    },
+    {
+      "onset": 11.208406,
+      "note": "G4",
+      "frame_index": 128
+    },
+    {
+      "onset": 11.821366,
+      "note": "G4",
+      "frame_index": 135
+    },
+    {
+      "onset": 12.521891,
+      "note": "G4",
+      "frame_index": 143
+    },
+    {
+      "onset": 13.309982,
+      "note": "G4",
+      "frame_index": 152
+    }
+  ],
+  "extras": [
+    {
+      "timestamp": 1.7762469000008423,
+      "frame_index": 24,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 95.28100408742338
+    },
+    {
+      "timestamp": 3.6197978999989573,
+      "frame_index": 48,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 117.23587127694361
+    },
+    {
+      "timestamp": 6.9191665000107605,
+      "frame_index": 91,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 98.1491650394396
+    },
+    {
+      "timestamp": 7.295466100011254,
+      "frame_index": 96,
+      "note": "F4",
+      "hand_id": 0,
+      "finger_id": 12,
+      "velocity": 177.08692018437432
+    },
+    {
+      "timestamp": 7.824263899994548,
+      "frame_index": 103,
+      "note": "E4",
+      "hand_id": 1,
+      "finger_id": 8,
+      "velocity": 383.3326945270353
+    },
+    {
+      "timestamp": 10.991064200003166,
+      "frame_index": 145,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 179.66707687097946
+    }
+  ],
+  "wrong_near": [
+    {
+      "timestamp": 7.295466100011254,
+      "frame_index": 96,
+      "note": "F4",
+      "hand_id": 0,
+      "finger_id": 12,
+      "velocity": 177.08692018437432
+    },
+    {
+      "timestamp": 7.824263899994548,
+      "frame_index": 103,
+      "note": "E4",
+      "hand_id": 1,
+      "finger_id": 8,
+      "velocity": 383.3326945270353
+    },
+    {
+      "timestamp": 10.991064200003166,
+      "frame_index": 145,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 179.66707687097946
+    }
+  ],
+  "predicted_hits": [
+    {
+      "timestamp": 1.7762469000008423,
+      "frame_index": 24,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 95.28100408742338
+    },
+    {
+      "timestamp": 3.6197978999989573,
+      "frame_index": 48,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 117.23587127694361
+    },
+    {
+      "timestamp": 6.631334500008961,
+      "frame_index": 87,
+      "note": "G4",
+      "hand_id": 0,
+      "finger_id": 8,
+      "velocity": 329.2235263317439
+    },
+    {
+      "timestamp": 6.9191665000107605,
+      "frame_index": 91,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 98.1491650394396
+    },
+    {
+      "timestamp": 7.295466100011254,
+      "frame_index": 96,
+      "note": "F4",
+      "hand_id": 0,
+      "finger_id": 12,
+      "velocity": 177.08692018437432
+    },
+    {
+      "timestamp": 7.824263899994548,
+      "frame_index": 103,
+      "note": "E4",
+      "hand_id": 1,
+      "finger_id": 8,
+      "velocity": 383.3326945270353
+    },
+    {
+      "timestamp": 10.991064200003166,
+      "frame_index": 145,
+      "note": "A4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 179.66707687097946
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "session": "data/sessions/benchmarks_3d/twinkle_right_hand/holdout/01_rest_single_hand",
+  "annotations_path": null,
+  "frames": 603,
+  "evaluated_start_frame": null,
+  "evaluated_end_frame": null,
+  "annotated": false,
+  "annotation_count": 0,
+  "predicted_count": 2,
+  "matched_count": 0,
+  "miss_count": 0,
+  "extra_count": 2,
+  "wrong_near_count": 0,
+  "precision": 0.0,
+  "recall": null,
+  "score": -2.0,
+  "expected_notes": [],
+  "predicted_notes": [
+    "G4",
+    "A4"
+  ],
+  "note_counts": {
+    "G4": 1,
+    "A4": 1
+  },
+  "finger_counts": {
+    "F12": 1,
+    "F8": 1
+  },
+  "reason_counts": {
+    "no_zone": 380,
+    "unstable_tracking": 25,
+    "depth_resting": 842,
+    "depth_lifting": 4,
+    "depth_not_armed": 257,
+    "depth_armed": 2,
+    "hit": 2,
+    "depth_falling": 5,
+    "pressed": 721,
+    "not_armed": 1,
+    "jitter_guard": 1,
+    "velocity": 2,
+    "depth_short_drop": 1,
+    "lifted": 1,
+    "armed": 1
+  },
+  "matches": [],
+  "misses": [],
+  "extras": [
+    {
+      "timestamp": 18.808856199961156,
+      "frame_index": 177,
+      "note": "G4",
+      "hand_id": 2,
+      "finger_id": 12,
+      "velocity": 369.0091368818586
+    },
+    {
+      "timestamp": 19.505461200024,
+      "frame_index": 189,
+      "note": "A4",
+      "hand_id": 2,
+      "finger_id": 8,
+      "velocity": 231.638170644127
+    }
+  ],
+  "wrong_near": [],
+  "predicted_hits": [
+    {
+      "timestamp": 18.808856199961156,
+      "frame_index": 177,
+      "note": "G4",
+      "hand_id": 2,
+      "finger_id": 12,
+      "velocity": 369.0091368818586
+    },
+    {
+      "timestamp": 19.505461200024,
+      "frame_index": 189,
+      "note": "A4",
+      "hand_id": 2,
+      "finger_id": 8,
+      "velocity": 231.638170644127
+    }
+  ]
+}

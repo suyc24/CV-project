@@ -39,7 +39,9 @@ from hand_tracker import HandTracker
 from hit_detector import HitDetector, HitEvent
 from instrument import InstrumentLayout
 from loop_station import LoopStation
+from midi_writer import MidiRecorder
 from rgbd_camera import AsyncRecord3DCamera, RGBDFrame, Record3DCamera, list_record3d_devices
+from scales import SCALE_NAMES, KEY_POSITIONS, build_scale_remap, build_scale_notes, get_chord_notes
 from session_recorder import SessionRecorder
 from ui import draw_scene
 from utils import FPSCounter
@@ -122,7 +124,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Experimental high-resolution fingertip edge refinement before optical-flow stabilization",
     )
-    parser.add_argument("--max-hands", type=int, default=2, help="Maximum number of hands to track")
+    parser.add_argument("--max-hands", type=int, default=1, help="Maximum number of hands to track")
     parser.add_argument("--no-hand-cutout", action="store_true", help="Do not composite the real hand above the piano layer")
     parser.add_argument("--no-fingertip-markers", action="store_true", help="Hide fingertip marker dots")
     parser.add_argument("--trigger-thumb", action="store_true", help="Allow thumb tips to trigger notes; enabled by default")
@@ -194,6 +196,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--guide-sequence", choices=guide_choices, default="none", help="Show a benchmark note guide and auto-write annotations.csv")
     parser.add_argument("--guide-first-onset", type=float, default=2.0, help="Seconds after recording starts for the first guided note")
     parser.add_argument("--guide-notes-per-second", type=float, default=2.0, help="Guided note tempo")
+    parser.add_argument("--velocity-curve", choices=["linear", "natural", "dramatic"], default="linear",
+                        help="Piano velocity-to-timbre response curve (runtime: v)")
+    parser.add_argument("--metronome", type=int, default=0, metavar="BPM",
+                        help="Start metronome at given BPM, 0=off (runtime: t/9/0)")
+    parser.add_argument("--scale", choices=SCALE_NAMES, default="major",
+                        help="Initial piano scale mode (runtime: keys 1-6)")
+    parser.add_argument("--chord-mode", action="store_true",
+                        help="Start with single-finger chord mode (runtime: c)")
     return parser.parse_args()
 
 
@@ -367,6 +377,18 @@ def main() -> int:
     depth_calibration_frames_remaining = 0
     frame_metrics_text = ""
     last_debug_metrics_time = 0.0
+    scale_name = args.scale
+    scale_remap = build_scale_remap(scale_name)
+    extended_scale = build_scale_notes(scale_name, count=15)
+    chord_mode = args.chord_mode
+    sustain_active = False
+    velocity_curve = args.velocity_curve
+    audio_engine.set_velocity_curve(velocity_curve)
+    metronome_bpm = args.metronome if args.metronome > 0 else 120
+    metronome_enabled = args.metronome > 0
+    metronome_last_beat = 0.0
+    metronome_beat_count = 0
+    midi_recorder = MidiRecorder(bpm=metronome_bpm)
     recorder: Optional[SessionRecorder] = None
     recording_deferred = should_defer_recording_until_depth_ready(args)
     recording_start_countdown: Optional[int] = None
@@ -484,13 +506,32 @@ def main() -> int:
             hits = hit_detector.update(hands, zones, current_time, depth_observations=depth_observations)
             diagnostics = hit_detector.diagnostics()
             for hit in hits:
-                audio_engine.play(hit.sound_id, hit.volume)
+                actual_note = scale_remap.get(hit.sound_id, hit.sound_id)
+                key_idx = KEY_POSITIONS.get(hit.sound_id, -1)
+                if chord_mode and key_idx >= 0:
+                    chord_notes = get_chord_notes(extended_scale, key_idx)
+                    audio_engine.play_chord(chord_notes, hit.volume)
+                    for cn in chord_notes:
+                        midi_recorder.note_on(current_time, cn, hit.volume)
+                else:
+                    audio_engine.play(actual_note, hit.volume)
+                    midi_recorder.note_on(current_time, actual_note, hit.volume)
                 loop_station.record_event(hit)
                 recent_hit = hit
                 highlights[hit.sound_id] = current_time + config.HIGHLIGHT_SECONDS
 
             loop_station.update(current_time, audio_engine)
             _expire_highlights(highlights, current_time)
+
+            if metronome_enabled:
+                beat_interval = 60.0 / metronome_bpm
+                if current_time - metronome_last_beat >= beat_interval:
+                    metronome_last_beat += beat_interval
+                    if current_time - metronome_last_beat > beat_interval:
+                        metronome_last_beat = current_time
+                    metronome_beat_count += 1
+                    metro_sound = "metronome_accent" if metronome_beat_count % 4 == 1 else "metronome_tick"
+                    audio_engine.play(metro_sound)
 
             if recorder is not None:
                 recorder.record_frame(
@@ -508,6 +549,21 @@ def main() -> int:
                     loop_state=loop_station.state.value,
                     mode=layout.mode,
                 )
+
+            feat_parts = []
+            if sustain_active:
+                feat_parts.append("SUSTAIN")
+            if scale_name != "major":
+                feat_parts.append(scale_name.upper())
+            if chord_mode:
+                feat_parts.append("CHORD")
+            if metronome_enabled:
+                feat_parts.append(f"BPM:{metronome_bpm}")
+            if velocity_curve != "linear":
+                feat_parts.append(f"VEL:{velocity_curve}")
+            if midi_recorder.has_events:
+                feat_parts.append("MIDI-REC")
+            feature_status = "  ".join(feat_parts)
 
             draw_scene(
                 frame=display_frame,
@@ -529,6 +585,8 @@ def main() -> int:
                     _recording_status_text(args, recorder, recording_deferred, recording_start_countdown),
                 ),
                 draw_instrument_overlay=not (args.hide_instrument_overlay or args.paper_keyboard),
+                note_remap=scale_remap or None,
+                feature_status=feature_status,
             )
             if guide is not None and recorder is not None:
                 guide.draw_overlay(display_frame, current_time - recorder.start_time)
@@ -621,6 +679,45 @@ def main() -> int:
                     f"Saved camera profile to {args.camera_profile}: "
                     f"exposure={camera_settings.exposure} over={metrics.overexposed_ratio * 100:.1f}%"
                 )
+            elif key == ord("s"):
+                sustain_active = not sustain_active
+                audio_engine.set_sustain(sustain_active)
+                print(f"Sustain pedal: {'ON' if sustain_active else 'OFF'}")
+            elif key == ord("c") and layout.mode == "piano":
+                chord_mode = not chord_mode
+                print(f"Chord mode: {'ON' if chord_mode else 'OFF'}")
+            elif key == ord("t"):
+                metronome_enabled = not metronome_enabled
+                if metronome_enabled:
+                    metronome_last_beat = current_time
+                    metronome_beat_count = 0
+                print(f"Metronome: {'ON' if metronome_enabled else 'OFF'}  BPM={metronome_bpm}")
+            elif key == ord("x"):
+                if midi_recorder.has_events:
+                    midi_recorder.finalize(current_time)
+                    midi_path = f"midi_export_{int(time.time())}.mid"
+                    midi_recorder.save(midi_path)
+                    print(f"MIDI exported: {midi_path}")
+                    midi_recorder = MidiRecorder(bpm=metronome_bpm)
+                else:
+                    print("No MIDI events to export.")
+            elif key == ord("v"):
+                curves = ["linear", "natural", "dramatic"]
+                velocity_curve = curves[(curves.index(velocity_curve) + 1) % len(curves)]
+                audio_engine.set_velocity_curve(velocity_curve)
+                print(f"Velocity curve: {velocity_curve}")
+            elif key in range(ord("1"), ord("1") + len(SCALE_NAMES)):
+                idx = key - ord("1")
+                scale_name = SCALE_NAMES[idx]
+                scale_remap = build_scale_remap(scale_name)
+                extended_scale = build_scale_notes(scale_name, count=15)
+                print(f"Scale: {scale_name}")
+            elif key == ord("9") and metronome_enabled:
+                metronome_bpm = max(40, metronome_bpm - 10)
+                print(f"Metronome BPM: {metronome_bpm}")
+            elif key == ord("0") and metronome_enabled:
+                metronome_bpm = min(240, metronome_bpm + 10)
+                print(f"Metronome BPM: {metronome_bpm}")
 
     except KeyboardInterrupt:
         pass

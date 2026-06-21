@@ -1,0 +1,3 @@
+expected_frame,expected_time,expected_note,hit_frame,hit_time,hit_note,finger_id,frame_delta,time_delta
+87,7.08296,G4,85,6.5144343999854755,G4,8,-2,-0.5685256000145245
+104,8.466987,A4,106,8.134777299972484,A4,8,2,-0.3322097000275157

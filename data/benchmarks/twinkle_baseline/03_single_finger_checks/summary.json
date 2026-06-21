@@ -1,0 +1,211 @@
+{
+  "session": "data/sessions/benchmarks_3d/twinkle_right_hand/dev/03_single_finger_checks",
+  "annotations_path": "data/sessions/benchmarks_3d/twinkle_right_hand/dev/03_single_finger_checks/annotations.csv",
+  "frames": 571,
+  "evaluated_start_frame": null,
+  "evaluated_end_frame": null,
+  "annotated": true,
+  "annotation_count": 30,
+  "predicted_count": 0,
+  "matched_count": 0,
+  "miss_count": 30,
+  "extra_count": 0,
+  "wrong_near_count": 0,
+  "precision": 0.0,
+  "recall": 0.0,
+  "score": -240.0,
+  "expected_notes": [
+    "C4",
+    "C4",
+    "C4",
+    "C4",
+    "C4",
+    "C4",
+    "D4",
+    "D4",
+    "D4",
+    "D4",
+    "D4",
+    "D4",
+    "E4",
+    "E4",
+    "E4",
+    "E4",
+    "E4",
+    "E4",
+    "F4",
+    "F4",
+    "F4",
+    "F4",
+    "F4",
+    "F4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4",
+    "G4"
+  ],
+  "predicted_notes": [],
+  "note_counts": {},
+  "finger_counts": {},
+  "reason_counts": {
+    "no_zone": 2630
+  },
+  "matches": [],
+  "misses": [
+    {
+      "onset": 2.0,
+      "note": "C4",
+      "frame_index": null
+    },
+    {
+      "onset": 2.5,
+      "note": "C4",
+      "frame_index": null
+    },
+    {
+      "onset": 3.0,
+      "note": "C4",
+      "frame_index": null
+    },
+    {
+      "onset": 3.5,
+      "note": "C4",
+      "frame_index": null
+    },
+    {
+      "onset": 4.0,
+      "note": "C4",
+      "frame_index": null
+    },
+    {
+      "onset": 4.5,
+      "note": "C4",
+      "frame_index": null
+    },
+    {
+      "onset": 5.0,
+      "note": "D4",
+      "frame_index": null
+    },
+    {
+      "onset": 5.5,
+      "note": "D4",
+      "frame_index": null
+    },
+    {
+      "onset": 6.0,
+      "note": "D4",
+      "frame_index": null
+    },
+    {
+      "onset": 6.5,
+      "note": "D4",
+      "frame_index": null
+    },
+    {
+      "onset": 7.0,
+      "note": "D4",
+      "frame_index": null
+    },
+    {
+      "onset": 7.5,
+      "note": "D4",
+      "frame_index": null
+    },
+    {
+      "onset": 8.0,
+      "note": "E4",
+      "frame_index": null
+    },
+    {
+      "onset": 8.5,
+      "note": "E4",
+      "frame_index": null
+    },
+    {
+      "onset": 9.0,
+      "note": "E4",
+      "frame_index": null
+    },
+    {
+      "onset": 9.5,
+      "note": "E4",
+      "frame_index": null
+    },
+    {
+      "onset": 10.0,
+      "note": "E4",
+      "frame_index": null
+    },
+    {
+      "onset": 10.5,
+      "note": "E4",
+      "frame_index": null
+    },
+    {
+      "onset": 11.0,
+      "note": "F4",
+      "frame_index": null
+    },
+    {
+      "onset": 11.5,
+      "note": "F4",
+      "frame_index": null
+    },
+    {
+      "onset": 12.0,
+      "note": "F4",
+      "frame_index": null
+    },
+    {
+      "onset": 12.5,
+      "note": "F4",
+      "frame_index": null
+    },
+    {
+      "onset": 13.0,
+      "note": "F4",
+      "frame_index": null
+    },
+    {
+      "onset": 13.5,
+      "note": "F4",
+      "frame_index": null
+    },
+    {
+      "onset": 14.0,
+      "note": "G4",
+      "frame_index": null
+    },
+    {
+      "onset": 14.5,
+      "note": "G4",
+      "frame_index": null
+    },
+    {
+      "onset": 15.0,
+      "note": "G4",
+      "frame_index": null
+    },
+    {
+      "onset": 15.5,
+      "note": "G4",
+      "frame_index": null
+    },
+    {
+      "onset": 16.0,
+      "note": "G4",
+      "frame_index": null
+    },
+    {
+      "onset": 16.5,
+      "note": "G4",
+      "frame_index": null
+    }
+  ],
+  "extras": [],
+  "wrong_near": [],
+  "predicted_hits": []
+}

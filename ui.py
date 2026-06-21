@@ -39,27 +39,29 @@ def draw_scene(
     debug: bool = False,
     debug_lines: Optional[List[str]] = None,
     draw_instrument_overlay: bool = True,
+    note_remap: Optional[Dict[str, str]] = None,
+    feature_status: str = "",
 ) -> None:
     camera_layer = frame.copy()
     hands = list(hands)
     if draw_instrument_overlay:
-        draw_zones(frame, zones, highlights, current_time)
+        draw_zones(frame, zones, highlights, current_time, note_remap=note_remap)
     if config.HAND_CUTOUT_ENABLED and hands:
         draw_hand_cutouts(frame, camera_layer, hands)
     if config.SHOW_FINGERTIP_MARKERS and hands:
         draw_fingertip_markers(frame, hands)
-    draw_status(frame, loop_station, mode, fps, gesture_update, recent_hit)
+    draw_status(frame, loop_station, mode, fps, gesture_update, recent_hit, feature_status=feature_status)
     if debug:
         lines = list(debug_lines or [])
         lines.extend(hit_detector.debug_snapshot())
         draw_debug(frame, lines)
 
 
-def draw_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_time: float) -> None:
+def draw_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_time: float, note_remap=None) -> None:
     if not zones:
         return
     if zones[0].kind == "piano":
-        draw_piano_zones(frame, zones, highlights, current_time)
+        draw_piano_zones(frame, zones, highlights, current_time, note_remap=note_remap)
         return
     roi_x1 = min(zone.x1 for zone in zones)
     roi_y1 = min(zone.y1 for zone in zones)
@@ -88,9 +90,9 @@ def draw_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_t
         _put_centered(frame, zone.label, zone.center, text, scale=0.72, thickness=2)
 
 
-def draw_piano_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_time: float) -> None:
+def draw_piano_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_time: float, note_remap=None) -> None:
     if zones and zones[0].polygon:
-        draw_perspective_piano_zones(frame, zones, highlights, current_time)
+        draw_perspective_piano_zones(frame, zones, highlights, current_time, note_remap=note_remap)
         return
 
     roi_x1 = min(zone.x1 for zone in zones)
@@ -122,12 +124,13 @@ def draw_piano_zones(frame, zones: List[Zone], highlights: Dict[str, float], cur
         cv2.rectangle(frame, (zone.x1, zone.y1), (zone.x2, zone.y2), (34, 34, 34), 1)
         cv2.line(frame, (zone.x1, int(zone.press_y)), (zone.x2, int(zone.press_y)), (40, 185, 255), 1)
         label_center = (zone.center[0], int(zone.y1 + zone.height * 0.78))
-        _put_centered(frame, zone.label, label_center, BLACK, scale=0.52, thickness=2)
+        display_label = (note_remap.get(zone.label, zone.label) if note_remap else zone.label).upper()
+        _put_centered(frame, display_label, label_center, BLACK, scale=0.52, thickness=2)
 
     _draw_black_keys(frame, zones)
 
 
-def draw_perspective_piano_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_time: float) -> None:
+def draw_perspective_piano_zones(frame, zones: List[Zone], highlights: Dict[str, float], current_time: float, note_remap=None) -> None:
     quad = _piano_plane_quad(zones)
     if quad is None:
         return
@@ -155,7 +158,8 @@ def draw_perspective_piano_zones(frame, zones: List[Zone], highlights: Dict[str,
         cv2.line(frame, press_left, press_right, (40, 185, 255), 1)
         label_left, label_right = _zone_depth_points(zone, 0.78)
         label_center = ((label_left[0] + label_right[0]) // 2, (label_left[1] + label_right[1]) // 2)
-        _put_centered(frame, zone.label, label_center, BLACK, scale=0.48, thickness=2)
+        display_label = (note_remap.get(zone.label, zone.label) if note_remap else zone.label).upper()
+        _put_centered(frame, display_label, label_center, BLACK, scale=0.48, thickness=2)
 
 
 def _get_perspective_piano_assets(
@@ -389,8 +393,10 @@ def draw_status(
     fps: float,
     gesture_update: GestureUpdate,
     recent_hit: Optional[HitEvent],
+    feature_status: str = "",
 ) -> None:
-    panel_w, panel_h = 430, 150
+    panel_w = 430
+    panel_h = 185 if feature_status else 150
     overlay = frame.copy()
     cv2.rectangle(overlay, (12, 12), (12 + panel_w, 12 + panel_h), (15, 18, 22), -1)
     cv2.addWeighted(overlay, 0.68, frame, 0.32, 0, frame)
@@ -419,6 +425,9 @@ def draw_status(
     else:
         hit_text = "Hit: none"
     cv2.putText(frame, hit_text, (28, y), cv2.FONT_HERSHEY_SIMPLEX, 0.58, WHITE, 2)
+    if feature_status:
+        y += 30
+        cv2.putText(frame, feature_status, (28, y), cv2.FONT_HERSHEY_SIMPLEX, 0.48, YELLOW, 1)
 
 
 def draw_debug(frame, lines: List[str]) -> None:

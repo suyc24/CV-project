@@ -1,0 +1,28 @@
+{
+  "source_session": "data/sessions/benchmarks_3d/bench3d_index_slow_g4",
+  "variant": "efbf8ac_baseline",
+  "frames": 298,
+  "source_frames": 298,
+  "shape_mismatch_frames": 0,
+  "hits": 9,
+  "reason_counts": {
+    "unstable_tracking": 329,
+    "no_zone": 10,
+    "armed": 82,
+    "not_armed": 30,
+    "hit": 9,
+    "key_depth_guard": 101,
+    "pressed": 763,
+    "lifting": 12,
+    "short_lift": 5,
+    "lifted": 19
+  },
+  "config": {
+    "FINGERTIP_REFINEMENT_ENABLED": false,
+    "FINGERTIP_OPTICAL_FLOW_STABILIZATION": true,
+    "TRACKING_REACQUIRE_HIT_BLOCK_FRAMES": 2,
+    "TRACKING_FULL_MISS_REACQUIRE_HIT_BLOCK_FRAMES": 4,
+    "TRACKING_NEW_HAND_HIT_BLOCK_FRAMES": 2,
+    "TRACKING_MAX_WIDTH": 416
+  }
+}

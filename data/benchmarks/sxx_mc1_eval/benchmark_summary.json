@@ -1,0 +1,35 @@
+{
+  "sessions": [],
+  "totals": {
+    "session_count": 0,
+    "annotated_session_count": 0,
+    "guardrail_session_count": 0,
+    "annotations": 0,
+    "predicted": 0,
+    "matched": 0,
+    "misses": 0,
+    "extras": 0,
+    "wrong_near": 0,
+    "guardrail_hits": 0,
+    "score": 0
+  },
+  "config": {
+    "PIANO_ARM_MIN_LIFT_PX": 16.0,
+    "PIANO_STRIKE_MIN_DROP_PX": 6.0,
+    "PIANO_STRIKE_MIN_NET_DROP_PX": 4.0,
+    "PIANO_STRIKE_MIN_VELOCITY": 95.0,
+    "PIANO_RELEASE_LIFT_PX": 20.0,
+    "PIANO_RELEASE_STABLE_FRAMES": 2,
+    "PIANO_RELEASE_MIN_NET_LIFT_PX": 24.0,
+    "PIANO_MONOPHONIC_PER_HAND": false,
+    "PIANO_BLOCK_PASSIVE_ARM_WHILE_DEPTH_CONTACT": false,
+    "PIANO_HIT_MIN_KEY_Y_RATIO": 0.05,
+    "PIANO_THUMB_HIT_MIN_KEY_Y_RATIO": 0.2,
+    "PIANO_LEFT_TRIM_KEYS": 0.0,
+    "PIANO_RIGHT_TRIM_KEYS": 0.0,
+    "PIANO_3D_TRIGGER_ENABLED": true,
+    "PIANO_3D_DIRECT_TRIGGER_ENABLED": false,
+    "PIANO_HAND_HIT_COOLDOWN": 0.12,
+    "TRACKING_NEW_HAND_HIT_BLOCK_FRAMES": 2
+  }
+}

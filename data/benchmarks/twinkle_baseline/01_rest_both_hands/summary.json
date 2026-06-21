@@ -1,0 +1,140 @@
+{
+  "session": "data/sessions/benchmarks_3d/twinkle_right_hand/dev/01_rest_both_hands",
+  "annotations_path": null,
+  "frames": 663,
+  "evaluated_start_frame": null,
+  "evaluated_end_frame": null,
+  "annotated": false,
+  "annotation_count": 0,
+  "predicted_count": 5,
+  "matched_count": 0,
+  "miss_count": 0,
+  "extra_count": 5,
+  "wrong_near_count": 0,
+  "precision": 0.0,
+  "recall": null,
+  "score": -5.0,
+  "expected_notes": [],
+  "predicted_notes": [
+    "C5",
+    "F4",
+    "F4",
+    "G4",
+    "G4"
+  ],
+  "note_counts": {
+    "C5": 1,
+    "F4": 2,
+    "G4": 2
+  },
+  "finger_counts": {
+    "F20": 1,
+    "F4": 3,
+    "F8": 1
+  },
+  "reason_counts": {
+    "no_zone": 20,
+    "unstable_tracking": 214,
+    "depth_resting": 3348,
+    "depth_lifting": 11,
+    "depth_not_armed": 78,
+    "depth_falling": 139,
+    "hit": 5,
+    "pressed": 886,
+    "depth_armed": 9,
+    "armed": 41,
+    "jitter_guard": 49,
+    "velocity": 24,
+    "depth_short_drop": 17,
+    "lifted": 1,
+    "lifting": 1,
+    "short_drop": 57
+  },
+  "matches": [],
+  "misses": [],
+  "extras": [
+    {
+      "timestamp": 6.557802099967375,
+      "frame_index": 68,
+      "note": "C5",
+      "hand_id": 1,
+      "finger_id": 20,
+      "velocity": 176.91284727058465
+    },
+    {
+      "timestamp": 7.355429099989124,
+      "frame_index": 82,
+      "note": "F4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 97.45285158995179
+    },
+    {
+      "timestamp": 8.501971299992874,
+      "frame_index": 102,
+      "note": "F4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 147.04855161594537
+    },
+    {
+      "timestamp": 20.702753099962138,
+      "frame_index": 323,
+      "note": "G4",
+      "hand_id": 0,
+      "finger_id": 8,
+      "velocity": 149.66503087625946
+    },
+    {
+      "timestamp": 25.00418309995439,
+      "frame_index": 404,
+      "note": "G4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 135.10305469860816
+    }
+  ],
+  "wrong_near": [],
+  "predicted_hits": [
+    {
+      "timestamp": 6.557802099967375,
+      "frame_index": 68,
+      "note": "C5",
+      "hand_id": 1,
+      "finger_id": 20,
+      "velocity": 176.91284727058465
+    },
+    {
+      "timestamp": 7.355429099989124,
+      "frame_index": 82,
+      "note": "F4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 97.45285158995179
+    },
+    {
+      "timestamp": 8.501971299992874,
+      "frame_index": 102,
+      "note": "F4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 147.04855161594537
+    },
+    {
+      "timestamp": 20.702753099962138,
+      "frame_index": 323,
+      "note": "G4",
+      "hand_id": 0,
+      "finger_id": 8,
+      "velocity": 149.66503087625946
+    },
+    {
+      "timestamp": 25.00418309995439,
+      "frame_index": 404,
+      "note": "G4",
+      "hand_id": 0,
+      "finger_id": 4,
+      "velocity": 135.10305469860816
+    }
+  ]
+}
